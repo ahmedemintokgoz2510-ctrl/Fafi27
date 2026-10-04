@@ -5,4 +5,7 @@ Buraya kendi dosyalarını koy:
   bg.jpg    (isteğe bağlı) ana menü arka plan görseli
 Dosya yoksa oyun sessiz/görselsiz çalışmaya devam eder.
 
-Saha, tribün ve oyuncu geometrileri Three.js ile oyun içinde oluşturulur.
+Saha ve tribünler Three.js ile oluşturulur. Oyuncular, rig ve animasyon içeren
+Quaternius Animated Human GLB modelini kullanır:
+  https://poly.pizza/m/c3Ibh9I3udk
+Model CC0 / public domain olarak yayımlanmıştır.
