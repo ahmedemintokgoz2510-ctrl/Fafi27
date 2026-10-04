@@ -170,7 +170,8 @@
     panel.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction); ballMesh.add(panel);
   });
   scene.add(ballMesh);
-  const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.52, 18), shadowMat); ballShadow.rotation.x = -Math.PI / 2; ballShadow.position.y = 0.03; scene.add(ballShadow);
+  const ballShadowMat = new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.24 });
+  const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.52, 18), ballShadowMat); ballShadow.rotation.x = -Math.PI / 2; ballShadow.position.y = 0.03; scene.add(ballShadow);
   const ballMarker = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.98, 32), new THREE.MeshBasicMaterial({ color: '#ffd34f', transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
   ballMarker.rotation.x = -Math.PI / 2; ballMarker.position.y = 0.045; scene.add(ballMarker);
 
@@ -198,8 +199,10 @@
       const c = playing && game.human[t] ? game.ctrl[t] : null;
       r.visible = !!c; if (c) r.position.set(c.x, 0.06, c.z);
     });
-    ballMesh.position.set(B.x, ballRadius, B.z); ballMesh.rotation.z -= B.vx * dt / ballRadius; ballMesh.rotation.x += B.vz * dt / ballRadius;
+    ballMesh.position.set(B.x, B.y, B.z); ballMesh.rotation.z -= B.vx * dt / ballRadius; ballMesh.rotation.x += B.vz * dt / ballRadius;
     ballShadow.position.x = B.x; ballShadow.position.z = B.z;
+    ballShadow.scale.setScalar(1 + Math.max(0, B.y - ballRadius) * 0.1);
+    ballShadowMat.opacity = clamp(0.24 - Math.max(0, B.y - ballRadius) * 0.025, 0.06, 0.24);
     if (!playing || phase === 'end') {
       orbit += dt * 0.1;
       cam.position.set(Math.sin(orbit) * 36, 58, 52 + Math.cos(orbit) * 4); cam.lookAt(0, 0, 0);
@@ -263,7 +266,7 @@
       slotTeam[m.slot] = m.team; both({ t: 'taken', taken: slotTeam }); refreshLobby();
       if (slotTeam[0] !== null && slotTeam[1] !== null && joined[0] && joined[1]) setTimeout(startMatch, 900);
     } else if (m.t === 'mv' && playing && t !== null) game.setMove(t, clamp(+m.x || 0, -1, 1), clamp(+m.y || 0, -1, 1));
-    else if (m.t === 'btn' && playing && t !== null) game.press(t, m.b, !!m.d);
+    else if (m.t === 'btn' && playing && t !== null) game.press(t, m.b, !!m.d, m);
     else if (m.t === 'rematch' && phase === 'end') startMatch();
   });
   socket.on('connect', () => { if (room) location.reload(); }); // sunucu yeniden bağlanırsa oda kaybolur

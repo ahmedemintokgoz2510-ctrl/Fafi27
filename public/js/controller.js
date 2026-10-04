@@ -178,23 +178,35 @@
     });
   });
 
-  function chargeLoop() {
-    $('chargeFill').style.width = Math.min(1, (performance.now() - chargeT0) / 900) * 100 + '%';
-    chargeRaf = requestAnimationFrame(chargeLoop);
+  function chargeLoop(name, startedAt) {
+    const fill = $(name === 'shoot' ? 'chargeFill' : 'passChargeFill');
+    fill.style.width = Math.min(1, (performance.now() - startedAt) / 1200) * 100 + '%';
+    chargeRaf = requestAnimationFrame(() => chargeLoop(name, startedAt));
   }
   function bindBtn(id, name) {
-    const el = $(id); let pid = null;
+    const el = $(id); let pid = null, startedAt = 0, startY = 0, loft = false;
     el.addEventListener('pointerdown', (e) => {
       if (layoutEditing) { beginControlDrag(e, el); return; }
       if (pid !== null) return; pid = e.pointerId; el.setPointerCapture(pid); el.classList.add('on');
+      startedAt = performance.now(); startY = e.clientY; loft = false;
       socket.emit('c2h', { t: 'btn', b: name, d: true });
       if (navigator.vibrate) navigator.vibrate(12);
-      if (name === 'shoot') { chargeT0 = performance.now(); chargeLoop(); }
+      if (name === 'shoot' || name === 'pass') chargeLoop(name, startedAt);
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== pid || (name !== 'shoot' && name !== 'pass')) return;
+      loft = startY - e.clientY > Math.max(42, innerHeight * 0.09);
+      el.classList.toggle('loft', loft);
     });
     const up = (e) => {
       if (e.pointerId !== pid) return; pid = null; el.classList.remove('on');
-      socket.emit('c2h', { t: 'btn', b: name, d: false });
-      if (name === 'shoot') { cancelAnimationFrame(chargeRaf); $('chargeFill').style.width = '0'; }
+      const hold = Math.min(1.2, Math.max(0, (performance.now() - startedAt) / 1000));
+      socket.emit('c2h', { t: 'btn', b: name, d: false, hold, loft });
+      if (name === 'shoot' || name === 'pass') {
+        cancelAnimationFrame(chargeRaf);
+        $(name === 'shoot' ? 'chargeFill' : 'passChargeFill').style.width = '0';
+      }
+      el.classList.remove('loft'); loft = false;
     };
     el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
   }
