@@ -146,7 +146,7 @@ Bu bölüm güncel durumu anlatır; yukarıdaki genel/eskimiş maddelerle çeli�
 
 ### Şu Anki Görsel Durum
 
-- Sahadaki aktif futbolcular `public/assets/models/animated-human.glb` içindeki rig/animasyonlu Quaternius karakteridir; `host.js` bunu klonlayıp `Idle`, `Run`, `Jump` kliplerini kullanır. Model gerçek insan oranlarına göre stilize/low-poly’dir; fotogerçekçi değildir.
+- Sahadaki aktif futbolcular `public/assets/models/casual-human.glb` içindeki Quaternius Casual Male karakteridir. Cinevva kataloğunda CC0, skinned, 23 eklem ve 17 animasyon klibi olarak doğrulandı; host `Idle`, `Run`, `Jump` kliplerini kullanır, şut animasyonu host'ta prosedüreldir. Bone/material eşlemeleri Quaternius rig adlarına göre yapıldı. Model daha ayrıntılı ve takım formaları renklendiriliyor, ancak hâlâ stilize/low-poly; fotogerçekçi değildir. `animated-human.glb` fallback olarak durur.
 - `public/assets/models/crowd/` içindeki altı Eclair/Quaternius CC0 GLB yalnızca tribün seyircileridir; saha oyuncusu olarak kullanılamazlar, çünkü statik pozludurlar.
 - Önceki siyah/kırmızı “random oyuncular” bu statik seyirci modelleriydi; saha oyuncuları değildi. Kaynak GLB’lerde Shoes/Pants materyalleri neredeyse siyahtı. `host.js` seyirci kıyafetlerini renk paletiyle değiştirip kalabalığı üst yan tribünlere taşımaya başladı.
 - Son düzenlemede kale arkası ve en alt seyirci sırası çıkarıldı. Bu değişiklik `public/js/host.js` içinde bekliyor; bir sonraki hesap önce 16:9 oyun/maç görünümünü kontrol etmeli, sonra commit/push etmeli veya gerekirse yerleşimi ufakça ayarlamalı.
@@ -155,6 +155,14 @@ Bu bölüm güncel durumu anlatır; yukarıdaki genel/eskimiş maddelerle çeli�
 
 - Telefonda `KAY`: basılı tutma süresi kayma gücünü artırır; yakın değilse başlamaz; sert temas faul ve serbest vuruş doğurur. Host’ta kayma pozu, düdük, banner ve titreşim vardır.
 - Telefonda `ARA`: en uygun takım arkadaşını seçer, onu koşuya gönderir ve topu koşu yoluna bırakır; ilk dokunuşta topu alabilir.
+- `PAS` ve `ARA`: kısa dokunuş en yakın uygun ileri oyuncuyu, uzun basış daha uzaktaki hedefi seçer; kontrolcüde şarj göstergesi bulunur.
+- Omuz omuza temas, baskı girdisi ve oyuncu savunma/güç değerleriyle top kazanımına dönüşebilir.
+- Taç ve korner ayrı duran top durumlarıdır. Taçta top oyuncu el hizasında, kornerde kamera korner noktasından ceza alanına bakar; telefon joystick sürüklemesi yön seçer ve `PAS` vuruşu kullanır.
+- Kaleci ceza alanında erişilebilir alçalan hava toplarına çıkar, yakalama olasılığı kaleci savunma değeri ve top hızı/mesafesine göre hesaplanır; tutulan top el hizasında gösterilir.
+- CPU top taşıyıcısı artık kare başına rastgele pas/şut denemez; şut alanı, baskı ve topu tutma süresine göre karar verir. Chaser seçimi kararlılaştırıldı, top bizdeyken defans/orta saha/forvet destek derinliği ayrıldı.
+- Oyuncu ad/numara etiketleri topa yakın ve kontrol edilen oyuncuda görünür; küçük, çerçevesiz metin topun üstüne kart bindirmez. Idle kontrollü oyuncu ve topsuz AI topa döner; kadrodaki görünür ten/saç paletleri oyuncu başına tanımlıdır.
+- Ses placeholder dosyaları CC0 Freesound MP3 önizlemeleriyle değiştirildi: düdük, top vuruşu, gol sevinci, 138 saniyelik stadyum ambiyansı ve kontrolcü buton tıkı. Ayrıntılı atıflar `public/assets/README.txt` içinde.
+- AI yaklaşımında Konami'nin açık eFootball rehberindeki açık pas hedefi/koşu ve takım oyun tarzı ilkeleri referans alındı; Konami'nin kapalı maç AI'sının aynısı olduğu iddia edilmez: https://www.konami.com/efootball/en/page/overview
 - Şut/pas uzun şarjı havadan vuruş yapar; pas hedefi belirlenir.
 - Sprint stamina tüketir ve bırakınca yeniler; top sprintte daha fazla öne açılır. `BASKI` ile kontrollü oyuncunun yanı sıra en yakın iki AI takım arkadaşı destek baskısı yapar.
 - Maç kamerası topu takip eder ve kaleye yaklaşınca yakınlaşır; menü kamerası geniş açıda kalır. HUD’da aktif oyuncunun kondisyon yüzdesi görünür.
@@ -166,17 +174,18 @@ Bu bölüm güncel durumu anlatır; yukarıdaki genel/eskimiş maddelerle çeli�
 
 - `CesiumMan` GLB indirilebilir ve rig/animasyon içerir ama Cesium maskot/logosu taşıyan stilize bir örnektir; gerçek futbolcu görünümü için uygun değil.
 - Sketchfab “Realistic Male Character” T-pozu tam-vücut ve CC BY 4.0’dır, fakat yaklaşık 642k üçgen/321k vertex, rig’sizdir ve görüntüleyici bu cihazda ağır olduğunu bildirir. 22 kopyayı oyuna ekleme; önce rig/LOD ve performans çözümü gerekir. Atıf şartları da uygulanmalı.
-- Cinevva katalog sayfasında Quaternius `Casual Female` için CC0 GLB, 23 eklem, 17 klip, yaklaşık 6.6k vertex ve harici texture gerektirmediği listelenmiştir. Gerçek insan görünümüne ne kadar yakın olduğu ve erkek eşinin aynı pakette bulunup bulunmadığı henüz doğrulanmadı; oyuna indirilip entegre edilmedi.
+- Cinevva katalog sayfasında Quaternius `Casual Female` ve `Casual Male` eşleşmesi CC0 GLB, 23 eklem, 17 klip, yaklaşık 6.6k vertex ve harici texture gerektirmeyen varlıklar olarak listelenmiştir. Erkek GLB indirildi, rig/klip adları incelendi ve oyunun host renderer'ına entegre edildi; kadın eş modeli indirilmedi çünkü Barcelona/RMA erkek kadrosunda kullanılmıyor.
 - Cinevva auto-rigger GLB/FBX/OBJ alıp rigli GLB döndürüyor; sayfaya göre ilk export ücretsiz ve en fazla 6 animasyon, sonrası plan gerektiriyor. Bir hesapla oturum açma gerekir. Kullanıcı hesabı/şifresi isteme veya model adına kullanıcı hesabında işlem yapma; sadece kullanıcı modeli alıp paylaşırsa entegrasyona devam et.
 - Makinede Blender komutu bulunamadı. Rig’siz 600k+ poligonlu modeli elde rigleme için mevcut araç yok.
+- OpenGameArt'ta CC0 “A footballer with some animation” paketi bulundu; futbol forması ve Blender rig/actions içeriyor, ancak yalnızca 2010 dönemi `.blend` ve TGA dosyaları sağlıyor. Makinede Blender olmadığı ve web uygulaması GLB istediği için kullanılabilir animasyonlu GLB'ye dönüştürülemedi.
 - CC0 için kaynak sayfaları: `https://app.cinevva.com/game-assets/free-3d-character-models`, `https://quaternius.com/packs/ultimateanimatedcharacters.html` (paket eşleşmesini ayrıca doğrula). Mevcut animasyonlu karakter kaynağı `https://poly.pizza/m/c3Ibh9I3udk`.
 
 ### Sonraki İş Sırası
 
 1. Seyirci yerleşimi 16:9 host sahnesinde kontrol edildi; canlı eşleştirme akışı iki telefon oturumuyla da test edildi.
-2. Gerçekçi oyuncu hedefi için Cinevva’daki Casual Female/Male GLB’lerini veya eşdeğer açık lisanslı, skinned, animasyonlu iki yetişkin modeli doğrula. Önce ayrı preview’de ölçek, rig kemik adları, idle/run/shot klipleri, materyal/texture bağımlılıkları ve dosya boyutunu incele.
-3. Eşleşen gerçekçi modeller bulunursa önce tek bir oyuncuda test et. `host.js`’teki `Spine1`, `Hips`, `Head`, `LeftUpLeg`, `RightUpLeg` bone adlarının yeni rig’deki adlarla uyuştuğunu kontrol et; uymazsa kemik eşleme katmanı veya mevcut Quaternius rig’e retarget gerekir. Fallback’i silme.
-4. Sonraki oynanış adımları: sabit adım/deterministik güncelleme, yer-hava sürtünmesi ve sekme tuning'i, defans statının müdahaleye etkisi, çarpışma ve kaleci davranışı. Her davranışı ayrı küçük simülasyon testiyle doğrula; doğrudan “eFootball ile aynı” diye iddia etme.
+2. Gerçek insan/fotogerçekçi asset isteniyorsa lisanslı, web-uyumlu, skinned GLB bul; mevcut Quaternius modelini ancak tek oyuncu preview ve performans testinden sonra değiştir. Var olan model low-poly olduğu için fotogerçekçilik hedefi henüz bitmedi.
+3. Sonraki AI adımları: top bizde değilken takım blok yüksekliği/hat kaydırma, rakibi markalama, pas arası koşusu, açık pas koridoru ve şut açısını simülasyon testleriyle iyileştir. eFootball'un iç AI'sı yayımlanmadığı için bu tasarım futbol taktiklerine dayanır; eşdeğerlik iddiası yapma.
+4. Kaleci tutma/çelme davranışını gerçek oyun akışında test et; saha dışına çıkan şut, orta ve yüksekten gelen top senaryolarında el yüksekliği animasyonunu ayarla.
 5. Her değişiklikte `npm test`, dört JS dosyası için `node --check`, `git diff --check`, browser console ve 16:9/mobil render kontrolü yap.
 
 ### Devir Anı Doğrulama
@@ -185,6 +194,6 @@ Bu bölüm güncel durumu anlatır; yukarıdaki genel/eskimiş maddelerle çeli�
 - `host.js` içindeki seyirci yerleşimi son bir 16:9 göz kontrolünden geçti; yayın sonrası aynı sahne yeni hesapta açılabiliyor olmalı.
 - ARA hedef/koşu/ilk dokunuş, stamina tüketim-toparlanma, pressure destek sayısı, sprintte topun daha çok açılması ve slide/foul senaryoları deterministik Node testleriyle geçti.
 - Son browser kontrollerinde JS hatası yoktu; 16:9 canvas çalışıyordu ve gamepad butonları çakışmıyordu.
-- 2026-10-04 ek doğrulama: `npm test` 5/5 geçti; game.js/host.js/controller.js/config.js sözdizimi ve `git diff --check` temiz. İki controller tarayıcı oturumu takım seçip 5 dakikalık host maçına geçti.
-- Gerçekçi, skinned/animasyonlu yetişkin futbolcu modeli hâlâ çözülmedi; mevcut saha modeli stilize Quaternius GLB. Kullanılabilir açık lisanslı modeli rig/animasyon/perf kontrolleri yapılmadan değiştirme.
+- 2026-10-04 ek doğrulama: `npm test` 12/12 geçti; dört JS dosyasının syntax kontrolleri ve `git diff --check` temiz. İki controller tarayıcı oturumu takım seçip maça geçti. Beş CC0 ses dosyasının browser metadata decode'u başarılı; crowd 138s, goal cheer 8s. İsim etiketleri topa yakın oyuncular/kontrolcü oyuncusu için küçük ve çerçevesiz görünür; idle oyuncular topa döner.
+- Yeni Casual Male GLB browser sahnesinde yüklendi; mevcut iki takım forması görünür. Saha oyuncuları hâlâ low-poly ve fotogerçekçi değiller. Daha gerçekçi futbolcu GLB'si için blender-only OpenGameArt modelini dönüştürmek üzere Blender gerekir; kullanıcının ortamında Blender/FFmpeg kurulu değil.
 - Araştırma için oluşturulan PNG ekran görüntüleri temizlendi.

@@ -3,8 +3,16 @@
   'use strict';
   const CFG = window.FAFI, $ = (id) => document.getElementById(id);
   const params = new URLSearchParams(location.search);
-  let room = (params.get('room') || '').toUpperCase(), slot = null, myTeam = null, phase = 'join', sprintEnabled = false;
+  let room = (params.get('room') || '').toUpperCase(), slot = null, myTeam = null, phase = 'join', sprintEnabled = false, restartKind = null;
   const socket = io({ transports: ['websocket', 'polling'] });
+  const buttonClick = new Audio('/assets/sounds/button-click.mp3');
+  buttonClick.preload = 'auto'; buttonClick.volume = 0.3;
+  function playButtonClick() {
+    const sound = buttonClick.cloneNode(); sound.volume = 0.3; sound.play().catch(() => {});
+  }
+  document.addEventListener('pointerdown', (event) => {
+    if (event.target.closest && event.target.closest('button, .card')) playButtonClick();
+  });
 
   function show(id) {
     ['join', 'wait', 'pick', 'end'].forEach((s) => $(s).classList.toggle('on', s === id));
@@ -54,7 +62,13 @@
     } else if (m.t === 'taken') {
       if (phase === 'pick') { myTeam = m.taken[slot]; drawCards(m.taken); }
     } else if (m.t === 'pickFail') { $('pickMsg').textContent = 'Bu takım seçildi, diğerini seç'; }
-    else if (m.t === 'vib' && navigator.vibrate) navigator.vibrate(m.ms);
+    else if (m.t === 'restart') {
+      restartKind = m.team === myTeam ? m.kind : 'defend';
+      $('hint').textContent = restartKind === 'defend' ? 'SAVUNMA' : 'HEDEFİ SEÇ';
+    } else if (m.t === 'restartEnd') {
+      restartKind = null; $('hint').textContent = 'HAREKET'; sx = sy = 0;
+      socket.emit('c2h', { t: 'mv', x: 0, y: 0 });
+    } else if (m.t === 'vib' && navigator.vibrate) navigator.vibrate(m.ms);
     else if (m.t === 'hostLeft') { phase = 'join'; wait('Bağlantı koptu', 'Tahtadaki oyun kapandı. QR kodu yeniden okut.'); }
   });
   $('again').onclick = () => socket.emit('c2h', { t: 'rematch' });
@@ -62,6 +76,7 @@
   // ---------- gamepad ----------
   function openPad() {
     const t = CFG.teams[myTeam] || CFG.teams[0];
+    restartKind = null; $('hint').textContent = 'HAREKET';
     document.documentElement.style.setProperty('--team', t.color);
     $('teamName').textContent = t.name;
     setSprintState(false, false);
@@ -92,7 +107,8 @@
     stickId = null; vx = vy = 0; base.classList.remove('active');
     base.style.removeProperty('left'); base.style.removeProperty('top'); base.style.removeProperty('bottom'); base.style.removeProperty('margin');
     knob.style.transform = ''; $('hint').style.display = '';
-    sx = sy = 0; socket.emit('c2h', { t: 'mv', x: 0, y: 0 });
+    sx = sy = 0;
+    if (!restartKind) socket.emit('c2h', { t: 'mv', x: 0, y: 0 });
   };
   left.addEventListener('pointerup', endStick); left.addEventListener('pointercancel', endStick);
   function move(e) {
@@ -104,7 +120,7 @@
   setInterval(() => {
     if (phase !== 'play' || stickId === null) return;
     if (Math.abs(vx - sx) > 0.02 || Math.abs(vy - sy) > 0.02) {
-      sx = vx; sy = vy; socket.volatile.emit('c2h', { t: 'mv', x: +vx.toFixed(2), y: +vy.toFixed(2) });
+      sx = vx; sy = vy; socket.emit('c2h', { t: 'mv', x: +vx.toFixed(2), y: +vy.toFixed(2) });
     }
   }, 33);
 
@@ -180,7 +196,7 @@
 
   function bindBtn(id, name) {
     const el = $(id); let pid = null, startedAt = 0, startY = 0, loft = false, chargeRafId = 0;
-    const fill = name === 'shoot' ? $('chargeFill') : name === 'pass' ? $('passChargeFill') : name === 'slide' ? $('slideChargeFill') : null;
+    const fill = name === 'shoot' ? $('chargeFill') : name === 'pass' ? $('passChargeFill') : name === 'through' ? $('throughChargeFill') : name === 'slide' ? $('slideChargeFill') : null;
     function updateCharge() {
       if (pid === null || !fill) return;
       fill.style.width = Math.min(1, (performance.now() - startedAt) / 1200) * 100 + '%';

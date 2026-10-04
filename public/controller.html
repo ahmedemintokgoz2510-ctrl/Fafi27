@@ -59,8 +59,9 @@
   #bPressure{right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px) + clamp(108px,27vmin,148px) + clamp(68px,16vmin,86px) + clamp(72px,16vmin,84px) + 30px)}
   #bSlide{--size:clamp(58px,14vmin,74px);width:var(--size);height:var(--size);right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px));bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px) + clamp(108px,27vmin,148px) + 12px + clamp(82px,21vmin,108px) + 12px);font-size:.72rem;color:var(--brass);border-color:rgba(191,165,106,.72)}
   #charge{position:absolute;left:20%;right:20%;bottom:18%;height:5px;background:rgba(15,26,20,.8);border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,.4)}
-  #chargeFill,#passChargeFill,#slideChargeFill{height:100%;width:0;background:linear-gradient(90deg,var(--brass),#f5d183);transition:width .04s linear}
+  #chargeFill,#passChargeFill,#throughChargeFill,#slideChargeFill{height:100%;width:0;background:linear-gradient(90deg,var(--brass),#f5d183);transition:width .04s linear}
   #passCharge{position:absolute;left:24%;right:24%;bottom:19%;height:4px;background:rgba(15,26,20,.8);border-radius:999px;overflow:hidden;pointer-events:none}
+  #throughCharge{position:absolute;left:24%;right:24%;bottom:19%;height:4px;background:rgba(15,26,20,.8);border-radius:999px;overflow:hidden;pointer-events:none}
   #slideCharge{position:absolute;left:24%;right:24%;bottom:19%;height:4px;background:rgba(15,26,20,.8);border-radius:999px;overflow:hidden;pointer-events:none}
   #rotate{position:fixed;inset:0;z-index:5;background:var(--bg);display:none;align-items:center;justify-content:center;text-align:center;padding:2rem;font-size:1.2rem;color:var(--muted)}
   @media (orientation:portrait){#pad.on ~ #rotate{display:flex}}
@@ -93,7 +94,7 @@
   <div id="right">
     <button class="btn" id="bShoot" type="button" aria-label="Şut çek, basılı tutarak güç biriktir">ŞUT<div id="charge"><div id="chargeFill"></div></div></button>
     <button class="btn" id="bPass" type="button" aria-label="Pas ver; basılı tutarak güç biriktir, yukarı sürükleyerek havadan gönder">PAS<div id="passCharge"><div id="passChargeFill"></div></div></button>
-    <button class="btn" id="bThrough" type="button" aria-label="Ara pası; boşa koşan oyuncunun önüne atar">ARA</button>
+    <button class="btn" id="bThrough" type="button" aria-label="Ara pası; kısa dokunuş yakına, uzun basış uzağa gönderir">ARA<div id="throughCharge"><div id="throughChargeFill"></div></div></button>
     <button class="btn" id="bSwitch" type="button" aria-label="Kontrol edilen oyuncuyu değiştir">DEĞİŞ</button>
     <button class="btn" id="bSprint" type="button" aria-label="Koşmayı aç veya kapat" aria-pressed="false">KOŞ</button>
     <button class="btn" id="bPressure" type="button" aria-label="Basılı tutarak topa baskı yap">BASKI</button>

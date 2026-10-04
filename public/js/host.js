@@ -197,7 +197,7 @@
     const role = player.role;
     g.scale.setScalar(1.18);
     const kit = role === 'GK' ? '#d4ae48' : t.color;
-    const skin = ['#d9a884', '#b77e5d', '#8b5e46', '#e2bd9c'][player.idx % 4];
+    const skin = player.appearance?.skin || ['#d9a884', '#b77e5d', '#8b5e46', '#e2bd9c', '#c79572', '#704a35', '#e0bc9d', '#966448'][(player.number + team * 3) % 8];
     const shortsColor = role === 'GK' ? '#273442' : (t.shortsColor || t.color);
     const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.9, metalness: 0.03 });
     const kitMat = new THREE.MeshStandardMaterial({ color: kit, roughness: 0.78, metalness: 0.12 });
@@ -205,7 +205,7 @@
     const trimMat = new THREE.MeshStandardMaterial({ color: t.color2, roughness: 0.7, metalness: 0.18 });
     const bootMat = new THREE.MeshStandardMaterial({ color: '#1f2428', roughness: 0.68, metalness: 0.22 });
     const hairColors = ['#302a27', '#211d1b', '#5a3c2d', '#382c25'];
-    const hairColor = hairColors[player.idx % hairColors.length];
+    const hairColor = player.appearance?.hair || hairColors[(player.number + team) % hairColors.length];
 
     const pelvis = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.31, 0.42, 12), shortMat); pelvis.position.y = 0.78; body.add(pelvis);
     const torso = capsuleMesh(0.32, 1.06, kitMat, 12); torso.position.y = 1.56; body.add(torso);
@@ -220,7 +220,7 @@
       const ear = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), skinMat); ear.position.set(0, 2.74, side * 0.25); body.add(ear);
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.047, 10, 8), new THREE.MeshStandardMaterial({ color: '#1a1d1d', roughness: 0.7, metalness: 0.2 }));
       eye.position.set(side * 0.12, 2.78, 0.21); eye.scale.set(0.55, 0.8, 0.7); body.add(eye);
-      const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshStandardMaterial({ color: '#d9a884', roughness: 1, metalness: 0 }));
+      const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), skinMat);
       cheek.position.set(side * 0.18, 2.64, 0.18); cheek.scale.set(0.7, 0.7, 0.7); body.add(cheek);
     });
     const nose = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.2, 10), skinMat); nose.rotation.x = Math.PI / 2; nose.position.set(0, 2.64, 0.25); body.add(nose);
@@ -253,12 +253,11 @@
     g.userData.limbs = { legs, arms, lowerLegs };
     const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 96;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = 'rgba(12,20,15,.88)'; ctx.fillRect(4, 4, 504, 88);
-    ctx.strokeStyle = t.color2; ctx.lineWidth = 6; ctx.strokeRect(4, 4, 504, 88);
-    ctx.fillStyle = '#f1eee6'; ctx.font = 'bold 34px Arial'; ctx.textAlign = 'center';
-    ctx.fillText(player.number + '  ' + player.name, 256, 61, 480);
-    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, depthTest: false }));
-    label.position.y = 3.25; label.scale.set(5.2, 0.98, 1); label.visible = false; g.add(label);
+    ctx.textAlign = 'center'; ctx.font = 'bold 68px Arial'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(8,14,11,.96)';
+    const labelText = '#' + player.number + ' ' + player.name;
+    ctx.strokeText(labelText, 256, 72, 500); ctx.fillStyle = '#f1eee6'; ctx.fillText(labelText, 256, 72, 500);
+    const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, depthTest: false, depthWrite: false }));
+    label.position.y = 3.05; label.scale.set(4.2, 1.0, 1); label.visible = true; g.add(label);
     g.userData.nameLabel = label;
     const sh = new THREE.Mesh(shadowGeo, shadowMat); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.04; g.add(sh);
     scene.add(g); return g;
@@ -273,7 +272,7 @@
     return null;
   };
   const loadPlayerModel = (index = 0) => {
-    const candidates = ['assets/models/realistic-human.glb', 'assets/models/animated-human.glb'];
+    const candidates = ['assets/models/casual-human.glb', 'assets/models/animated-human.glb'];
     const url = candidates[index];
     if (!url) {
       console.warn('No animated human model was found; falling back to primitive capsule players.');
@@ -303,7 +302,11 @@
           object.frustumCulled = false;
           const material = object.material && object.material.clone ? object.material.clone() : object.material;
           if (material && material.color) {
-            material.color.set(['#d8ad90', '#bd896a', '#986c53', '#e0bc9c'][player.idx % 4]);
+            const skinTone = player.appearance?.skin || ['#d8ad90', '#bd896a', '#986c53', '#e0bc9c', '#c79572', '#704a35', '#e0bc9d', '#966448'][(player.number + player.team * 3) % 8];
+            if (material.name === 'Skin' || material.name === 'Face') material.color.set(skinTone);
+            else if (material.name === 'Hair') material.color.set(player.appearance?.hair || ['#302a27', '#211d1b', '#5a3c2d', '#382c25'][(player.number + player.team) % 4]);
+            else if (material.name === 'Shirt') material.color.set(team.color);
+            else if (material.name === 'Pants') material.color.set(team.shortsColor || team.color);
             material.roughness = 0.88;
             material.metalness = 0.03;
             material.clearcoat = 0.12;
@@ -311,13 +314,16 @@
           object.material = material;
         });
 
-        const spine = getBone(actor, ['Spine1', 'Spine', 'Spine_01']);
+        const spine = getBone(actor, ['Spine1', 'Spine', 'Spine_01', 'Torso', 'Abdomen']);
         const hips = getBone(actor, ['Hips', 'Pelvis']);
         const head = getBone(actor, ['Head', 'HeadTop_End', 'Neck']);
-        const leftLeg = getBone(actor, ['LeftUpLeg', 'LeftLeg', 'LeftUpperLeg']);
-        const rightLeg = getBone(actor, ['RightUpLeg', 'RightLeg', 'RightUpperLeg']);
-        const leftFoot = getBone(actor, ['LeftFoot', 'LeftToeBase']);
-        const rightFoot = getBone(actor, ['RightFoot', 'RightToeBase']);
+        const leftLeg = getBone(actor, ['LeftUpLeg', 'LeftLeg', 'LeftUpperLeg', 'UpperLegL']);
+        const rightLeg = getBone(actor, ['RightUpLeg', 'RightLeg', 'RightUpperLeg', 'UpperLegR']);
+        const leftFoot = getBone(actor, ['LeftFoot', 'LeftToeBase', 'FootL']);
+        const rightFoot = getBone(actor, ['RightFoot', 'RightToeBase', 'FootR']);
+        const leftArm = getBone(actor, ['LeftArm', 'LeftUpperArm', 'UpperArmL']);
+        const rightArm = getBone(actor, ['RightArm', 'RightUpperArm', 'UpperArmR']);
+        if (head && url.includes('casual-human.glb')) head.scale.setScalar(0.84);
         if (spine) {
           const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.0125, 0.0135, 0.037, 16), mat(player.role === 'GK' ? '#d4ae48' : team.color));
           shirt.position.y = 0.003; spine.add(shirt);
@@ -357,7 +363,7 @@
         if (run) run.setEffectiveWeight(0);
         if (jump) jump.setEffectiveWeight(0);
         mesh.userData.body.visible = false; mesh.add(actor);
-        characterAnimation[i] = { actor, mixer, idle, run, jump, leftLeg, rightLeg };
+        characterAnimation[i] = { actor, mixer, idle, run, jump, leftLeg, rightLeg, leftArm, rightArm };
       });
     }, undefined, (error) => {
       if (index < candidates.length - 1) loadPlayerModel(index + 1);
@@ -419,10 +425,15 @@
         if (animation.jump) animation.jump.setEffectiveWeight(jumping);
         animation.actor.rotation.z = -slide * 0.8;
         animation.mixer.update(dt);
+        const armLift = game.state === 'throwin' && B.owner === p ? 1.05 : p.role === 'GK' && B.owner === p ? 0.55 : 0;
+        if (animation.leftArm) animation.leftArm.rotation.z -= armLift;
+        if (animation.rightArm) animation.rightArm.rotation.z += armLift;
         const kickLeg = p.kickSide === 0 ? animation.leftLeg : animation.rightLeg;
         if (kickLeg && kick > 0) kickLeg.rotation.x += kick * 1.2;
       }
-      m.userData.nameLabel.visible = false;
+      const labelNearPlay = Math.hypot(p.x - B.x, p.z - B.z) < 17;
+      const isControlled = game.human[p.team] && game.ctrl[p.team] === p;
+      m.userData.nameLabel.visible = labelNearPlay || isControlled;
     });
     rings.forEach((r, t) => {
       const c = playing && game.human[t] ? game.ctrl[t] : null;
@@ -436,6 +447,13 @@
       if (cam.fov !== 58) { cam.fov = 58; cam.updateProjectionMatrix(); }
       orbit += dt * 0.1;
       cam.position.set(Math.sin(orbit) * 36, 58, 52 + Math.cos(orbit) * 4); cam.lookAt(0, 0, 0);
+    } else if (game.state === 'corner') {
+      if (cam.fov !== 48) { cam.fov = 48; cam.updateProjectionMatrix(); }
+      const sideX = B.x < 0 ? -1 : 1, sideZ = B.z < 0 ? -1 : 1;
+      camX += (B.x + sideX * 7 - camX) * Math.min(1, 2.2 * dt);
+      camY += (17 - camY) * Math.min(1, 1.8 * dt);
+      camZ += (B.z + sideZ * 10 - camZ) * Math.min(1, 2.2 * dt);
+      cam.position.set(camX, camY, camZ); cam.lookAt(B.x - sideX * 5, 1, 0);
     } else {
       if (cam.fov !== 46) { cam.fov = 46; cam.updateProjectionMatrix(); }
       camX += (clamp(B.x * 0.85, -26, 26) - camX) * Math.min(1, 2.5 * dt);
@@ -541,12 +559,18 @@
     crowd(true); snd('whistle');
   }
   function onGameEvent(type, d) {
+    if (['penalty', 'freekick', 'corner', 'throwin'].includes(type)) both({ t: 'restart', kind: type, team: d.team });
+    else if (type === 'restartEnd') both({ t: 'restartEnd' });
     if (type === 'kickoff' && playing) banner(game.score[0] + ' - ' + game.score[1], 1200);
     else if (type === 'whistle') snd('whistle');
     else if (type === 'kick') snd('kick');
     else if (type === 'tackle') { snd('kick'); both({ t: 'vib', ms: 45 }); }
+    else if (type === 'shoulder') { snd('kick'); both({ t: 'vib', ms: 55 }); }
+    else if (type === 'save') { snd('kick'); if (d.caught) both({ t: 'vib', ms: 45 }); }
     else if (type === 'penalty') { banner('PENALTİ!<small>' + CFG.teams[d.team].name + '</small>', 2200); snd('whistle'); both({ t: 'vib', ms: 180 }); }
     else if (type === 'freekick') { banner('SERBEST VURUŞ!<small>' + CFG.teams[d.team].name + '</small>', 2200); snd('whistle'); both({ t: 'vib', ms: 170 }); }
+    else if (type === 'corner') { banner('KORNER!<small>' + CFG.teams[d.team].name + '</small>', 1800); snd('whistle'); both({ t: 'vib', ms: 100 }); }
+    else if (type === 'throwin') { banner('TAÇ ATIŞI<small>' + CFG.teams[d.team].name + '</small>', 1500); snd('whistle'); }
     else if (type === 'foul') { banner('FAUL!<small>' + CFG.teams[d.team].name + '</small>', 1800); snd('whistle'); both({ t: 'vib', ms: 130 }); }
     else if (type === 'offside') { banner('OFSAYT!<small>Serbest vuruş</small>', 1800); snd('whistle'); both({ t: 'vib', ms: 120 }); }
     else if (type === 'goal') {
