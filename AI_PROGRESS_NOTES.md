@@ -158,7 +158,9 @@ Bu bölüm güncel durumu anlatır; yukarıdaki genel/eskimiş maddelerle çeli�
 - Şut/pas uzun şarjı havadan vuruş yapar; pas hedefi belirlenir.
 - Sprint stamina tüketir ve bırakınca yeniler; top sprintte daha fazla öne açılır. `BASKI` ile kontrollü oyuncunun yanı sıra en yakın iki AI takım arkadaşı destek baskısı yapar.
 - Maç kamerası topu takip eder ve kaleye yaklaşınca yakınlaşır; menü kamerası geniş açıda kalır. HUD’da aktif oyuncunun kondisyon yüzdesi görünür.
-- Bunlar eFootball klonu veya eşdeğer fizik değildir. Oyun hâlâ basitleştirilmiş JS simülasyonudur; top spin/curve, sekme, oyuncu ivme/easing, pas/şut isabeti, çarpışma ve kaleci davranışında ayrıntılı tuning gerekir.
+- Şutlarda yön girdisi top spin'i üretir; top Magnus benzeri yanal kuvvetle kavis alır ve spin zamanla azalır. Shooting/passing değerleri isabeti, shooting/power değerleri şut gücünü etkiler.
+- Normal pas, ara pas ve orta için pas anındaki ikinci son savunmacı/top çizgisine göre ofsayt kontrolü yapılır; hedef oyuncu topa müdahale ederse savunmaya serbest vuruş verilir ve host'ta ofsayt bildirimi çıkar.
+- Bunlar eFootball klonu veya eşdeğer fizik değildir. Sabit adım fiziği, daha ayrıntılı sekme/sürtünme, çarpışma ve kaleci davranışı hâlâ geliştirilmelidir.
 
 ### Gerçekçi Model Araştırması
 
@@ -171,11 +173,11 @@ Bu bölüm güncel durumu anlatır; yukarıdaki genel/eskimiş maddelerle çeli�
 
 ### Sonraki İş Sırası
 
-1. `git status --short --branch` ile bekleyen `host.js` crowd yerleşimini doğrula; 16:9 host görüntüsünde kale çizgisine seyirci taşmadığını kontrol et. Sonra ilgili testi ve `git diff --check` çalıştır.
+1. Seyirci yerleşimi 16:9 host sahnesinde kontrol edildi; canlı eşleştirme akışı iki telefon oturumuyla da test edildi.
 2. Gerçekçi oyuncu hedefi için Cinevva’daki Casual Female/Male GLB’lerini veya eşdeğer açık lisanslı, skinned, animasyonlu iki yetişkin modeli doğrula. Önce ayrı preview’de ölçek, rig kemik adları, idle/run/shot klipleri, materyal/texture bağımlılıkları ve dosya boyutunu incele.
 3. Eşleşen gerçekçi modeller bulunursa önce tek bir oyuncuda test et. `host.js`’teki `Spine1`, `Hips`, `Head`, `LeftUpLeg`, `RightUpLeg` bone adlarının yeni rig’deki adlarla uyuştuğunu kontrol et; uymazsa kemik eşleme katmanı veya mevcut Quaternius rig’e retarget gerekir. Fallback’i silme.
-4. Bir sonraki oynanış dilimi top fiziği olsun: sabit adım/deterministik test, yer sürtünmesi ve hava drag’i, zıplama/sekme, top spin + Magnus eğrisi, koşu momentum/ivme frenleme ve kısa/uzun pas/şut isabet farkı. Her davranışı ayrı küçük simülasyon testiyle doğrula; doğrudan “eFootball ile aynı” diye iddia etme.
-5. Her değişiklikte dört JS dosyası için `node --check`, `git diff --check`, browser console ve 16:9/mobil render kontrolü yap. Kullanıcı önceki çalışmalarda GitHub’a push istemiştir; push öncesi status/diff’i incele, unrelated dosyaları dahil etme.
+4. Sonraki oynanış adımları: sabit adım/deterministik güncelleme, yer-hava sürtünmesi ve sekme tuning'i, defans statının müdahaleye etkisi, çarpışma ve kaleci davranışı. Her davranışı ayrı küçük simülasyon testiyle doğrula; doğrudan “eFootball ile aynı” diye iddia etme.
+5. Her değişiklikte `npm test`, dört JS dosyası için `node --check`, `git diff --check`, browser console ve 16:9/mobil render kontrolü yap.
 
 ### Devir Anı Doğrulama
 
@@ -183,4 +185,6 @@ Bu bölüm güncel durumu anlatır; yukarıdaki genel/eskimiş maddelerle çeli�
 - `host.js` içindeki seyirci yerleşimi son bir 16:9 göz kontrolünden geçti; yayın sonrası aynı sahne yeni hesapta açılabiliyor olmalı.
 - ARA hedef/koşu/ilk dokunuş, stamina tüketim-toparlanma, pressure destek sayısı, sprintte topun daha çok açılması ve slide/foul senaryoları deterministik Node testleriyle geçti.
 - Son browser kontrollerinde JS hatası yoktu; 16:9 canvas çalışıyordu ve gamepad butonları çakışmıyordu.
+- 2026-10-04 ek doğrulama: `npm test` 5/5 geçti; game.js/host.js/controller.js/config.js sözdizimi ve `git diff --check` temiz. İki controller tarayıcı oturumu takım seçip 5 dakikalık host maçına geçti.
+- Gerçekçi, skinned/animasyonlu yetişkin futbolcu modeli hâlâ çözülmedi; mevcut saha modeli stilize Quaternius GLB. Kullanılabilir açık lisanslı modeli rig/animasyon/perf kontrolleri yapılmadan değiştirme.
 - Araştırma için oluşturulan PNG ekran görüntüleri temizlendi.

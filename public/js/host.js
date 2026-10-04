@@ -548,6 +548,7 @@
     else if (type === 'penalty') { banner('PENALTİ!<small>' + CFG.teams[d.team].name + '</small>', 2200); snd('whistle'); both({ t: 'vib', ms: 180 }); }
     else if (type === 'freekick') { banner('SERBEST VURUŞ!<small>' + CFG.teams[d.team].name + '</small>', 2200); snd('whistle'); both({ t: 'vib', ms: 170 }); }
     else if (type === 'foul') { banner('FAUL!<small>' + CFG.teams[d.team].name + '</small>', 1800); snd('whistle'); both({ t: 'vib', ms: 130 }); }
+    else if (type === 'offside') { banner('OFSAYT!<small>Serbest vuruş</small>', 1800); snd('whistle'); both({ t: 'vib', ms: 120 }); }
     else if (type === 'goal') {
       banner('GOL!<small>' + CFG.teams[d.team].name + '</small>', 3000); snd('goal');
       both({ t: 'vib', ms: [220, 80, 220] });

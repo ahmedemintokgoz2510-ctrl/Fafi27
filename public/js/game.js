@@ -10,7 +10,7 @@
 
   function createGame(cfg, onEvent) {
     const emit = (t, d) => onEvent && onEvent(t, d || {});
-    const B = { x: 0, y: 0.48, z: 0, vx: 0, vy: 0, vz: 0, owner: null, target: null, last: 0, ownT: 0 };
+    const B = { x: 0, y: 0.48, z: 0, vx: 0, vy: 0, vz: 0, spin: 0, offside: false, owner: null, target: null, last: 0, ownT: 0 };
     const G = {
       L, W, HL, HW, GW, ball: B, players: [], teams: [[], []], score: [0, 0], time: 0,
       state: 'idle', stateT: 0, human: [false, false], ctrl: [null, null], chaser: [null, null],
@@ -48,21 +48,21 @@
       });
       const k = G.teams[kt][9];
       k.x = -k.dir * 0.95; k.z = 0; k.protect = 0.6;
-      B.owner = k; B.target = null; B.x = 0; B.y = 0.48; B.z = 0; B.vx = B.vy = B.vz = 0; B.ownT = 0; B.last = kt;
+      B.owner = k; B.target = null; B.x = 0; B.y = 0.48; B.z = 0; B.vx = B.vy = B.vz = 0; B.spin = 0; B.offside = false; B.ownT = 0; B.last = kt;
       G.input.forEach((i) => { i.charge = -1; i.sprint = false; i.pressure = false; });
       G.ctrl = [null, null];
       G.state = 'kickoff'; G.stateT = 1.5;
       emit('kickoff');
     }
 
-    function setSetPieceState(kind, team, x, z, face, player) {
+    function setSetPieceState(kind, team, x, z, face, player, eventType = kind) {
       const taker = player || nearestOf(G.teams[team], x, z, false) || G.teams[team][0];
       G.players.forEach((p) => {
         p.vx = 0; p.vz = 0; p.noGrab = p.team === team ? 0.25 : Math.max(p.noGrab, 1.0);
       });
       taker.face = face; taker.x = x - Math.cos(face) * 1.2; taker.z = z - Math.sin(face) * 1.2; taker.vx = 0; taker.vz = 0;
-      taker.protect = 0.9; taker.noGrab = 0.8; B.owner = taker; B.target = null; B.x = x; B.y = 0.48; B.z = z; B.vx = 0; B.vy = 0; B.vz = 0; B.ownT = 0; B.last = team;
-      G.state = kind; G.stateT = 1.6; emit(kind, { team, player: taker.number, x, z });
+      taker.protect = 0.9; taker.noGrab = 0.8; B.owner = taker; B.target = null; B.x = x; B.y = 0.48; B.z = z; B.vx = 0; B.vy = 0; B.vz = 0; B.spin = 0; B.offside = false; B.ownT = 0; B.last = team;
+      G.state = kind; G.stateT = 1.6; emit(eventType, { team, player: taker.number, x, z });
     }
 
     G.awardPenalty = function (team, player) {
@@ -74,13 +74,13 @@
       setSetPieceState('penalty', attacking, x, 0, face, taker);
     };
 
-    G.awardFreeKick = function (team, x, z, player) {
+    G.awardFreeKick = function (team, x, z, player, eventType = 'freekick') {
       const attacking = team ?? 0;
       const spotX = clamp(x ?? G.ball.x, -HL + 4, HL - 4);
       const spotZ = clamp(z ?? G.ball.z, -HW + 4, HW - 4);
       const face = attacking === 0 ? Math.atan2(0 - spotZ, HL - spotX) : Math.atan2(0 - spotZ, -HL - spotX);
       const taker = player ? G.teams[attacking].find((p) => p.number === player) || G.teams[attacking][0] : nearestOf(G.teams[attacking], spotX, spotZ, false) || G.teams[attacking][0];
-      setSetPieceState('freekick', attacking, spotX, spotZ, face, taker);
+      setSetPieceState('freekick', attacking, spotX, spotZ, face, taker, eventType);
     };
 
     G.start = function (minutes, human) {
@@ -90,11 +90,20 @@
     G.setMove = (t, x, z) => { G.input[t].x = x; G.input[t].z = z; };
 
     // ---------- vuruşlar ----------
-    function kick(p, dx, dz, speed, jitter, lift = 0) {
+    function kick(p, dx, dz, speed, jitter, lift = 0, spin = 0) {
       let a = Math.atan2(dz, dx) + (jitter ? rand(-jitter, jitter) : 0);
       B.vx = Math.cos(a) * speed; B.vy = lift; B.vz = Math.sin(a) * speed;
+      B.spin = clamp(spin, -2.2, 2.2); B.offside = false;
       B.owner = null; B.target = null; B.last = p.team; p.noGrab = 0.5; p.kickT = 0.42;
       emit('kick', { team: p.team, speed });
+    }
+
+    function isOffsideAtPass(p, receiver) {
+      const progress = receiver.x * p.dir;
+      if (progress <= 0) return false;
+      const defenders = G.teams[1 - p.team].map((player) => player.x * p.dir).sort((a, b) => b - a);
+      const line = Math.max(B.x * p.dir, defenders[1] ?? -HL);
+      return progress > line + 0.35;
     }
 
     function doPass(p, ax, az, ai, power = 0, loft = false) {
@@ -118,11 +127,11 @@
         }
         if (s > bs) { bs = s; best = q; }
       }
-      if (!best) { if (ai) return false; kick(p, ax, az, 18 + power * 10, 0.02, loft ? 7 + power * 4 : 0); return true; }
+      if (!best) { if (ai) return false; kick(p, ax, az, 18 + power * 10, 0.02 * clamp(1.45 - p.passing / 100, 0.35, 1.05), loft ? 7 + power * 4 : 0); return true; }
       const d = dist(p, best);
       const speed = clamp((d * 1.3 + 9) * (1 + power * 0.4) * (1 + (p.passing - 72) * 0.006), 14, 48);
-      kick(p, best.x + best.vx * 0.3 - p.x, best.z + best.vz * 0.3 - p.z, speed, 0.03, loft ? 7 + power * 4 : 0);
-      B.target = best;
+      kick(p, best.x + best.vx * 0.3 - p.x, best.z + best.vz * 0.3 - p.z, speed, 0.03 * clamp(1.45 - p.passing / 100, 0.35, 1.05), loft ? 7 + power * 4 : 0);
+      B.target = best; B.offside = isOffsideAtPass(p, best);
       return true;
     }
 
@@ -141,15 +150,15 @@
         if (score > bestScore) { bestScore = score; best = teammate; }
       }
       if (!best) {
-        if (!ai) kick(p, ax, az, 20 + power * 14, 0.02);
+        if (!ai) kick(p, ax, az, 20 + power * 14, 0.02 * clamp(1.45 - p.passing / 100, 0.35, 1.05));
         return !ai;
       }
       const lead = clamp(dist(p, best) * 0.4 + 3, 6, 15);
       const targetX = clamp(best.x + p.dir * lead * 0.8 + ax * lead * 0.2, -HL + 3, HL - 3);
       const targetZ = clamp(best.z + az * lead * 0.5, -HW + 3, HW - 3);
       const speed = clamp(Math.hypot(targetX - p.x, targetZ - p.z) * 1.25 + 8, 16, 46) * (1 + power * 0.25) * (1 + (p.passing - 72) * 0.005);
-      kick(p, targetX - p.x, targetZ - p.z, speed, 0.02);
-      B.target = best; best.runT = 2.2; best.rx = targetX; best.rz = targetZ;
+      kick(p, targetX - p.x, targetZ - p.z, speed, 0.02 * clamp(1.45 - p.passing / 100, 0.35, 1.05));
+      B.target = best; B.offside = isOffsideAtPass(p, best); best.runT = 2.2; best.rx = targetX; best.rz = targetZ;
       return true;
     }
 
@@ -157,14 +166,14 @@
       const targetX = p.dir * (HL - 12), targetZ = -Math.sign(p.z || 1) * 8;
       const dx = targetX - p.x, dz = targetZ - p.z;
       const speed = clamp(Math.hypot(dx, dz) * 0.48 + 16, 22, 36) * (1 + power * 0.2);
-      kick(p, dx, dz, speed, 0.02, 9 + power * 4);
+      kick(p, dx, dz, speed, 0.02 * clamp(1.45 - p.passing / 100, 0.35, 1.05), 9 + power * 4);
       let receiver = null, nearest = 1e9;
       for (const teammate of G.teams[p.team]) {
         if (teammate === p) continue;
         const distance = Math.hypot(teammate.x - targetX, teammate.z - targetZ);
         if (distance < nearest) { nearest = distance; receiver = teammate; }
       }
-      B.target = receiver;
+      B.target = receiver; B.offside = receiver ? isOffsideAtPass(p, receiver) : false;
     }
 
     function doShoot(p, charge, ai, loft = false) {
@@ -181,7 +190,9 @@
       }
       const air = loft || (!ai && charge > 0.5);
       const shotPower = 1 + (p.shooting - 72) * 0.012 + (p.power - 72) * 0.008;
-      kick(p, ax, az, (air ? 20 + 14 * charge : 24 + 22 * charge) * shotPower, 0.03 + 0.06 * charge, air ? 4 + charge * 7 : 0);
+      const aimError = (0.03 + 0.06 * charge) * clamp(1.45 - p.shooting / 100, 0.35, 1.05);
+      const curve = clamp(Math.cos(p.face) * az - Math.sin(p.face) * ax, -1, 1) * (0.7 + p.shooting / 100);
+      kick(p, ax, az, (air ? 20 + 14 * charge : 24 + 22 * charge) * shotPower, aimError, air ? 4 + charge * 7 : 0, curve);
       p.shootCd = 1;
     }
 
@@ -443,10 +454,13 @@
           }
         }
       } else {
+        B.vx += -B.spin * B.vz * 0.045 * dt;
+        B.vz += B.spin * B.vx * 0.045 * dt;
         B.x += B.vx * dt; B.z += B.vz * dt;
         B.y += B.vy * dt; B.vy -= 19 * dt;
         if (B.y < 0.48) { B.y = 0.48; B.vy = B.vy < -1.2 ? -B.vy * 0.32 : 0; }
         const f = Math.exp(-0.8 * dt); B.vx *= f; B.vz *= f;
+        B.spin *= Math.exp(-1.25 * dt);
         const spd = Math.hypot(B.vx, B.vz);
         if (spd < 0.3) B.vx = B.vz = 0;
         if (!detect) {
@@ -475,6 +489,11 @@
         }
         if (!B.owner && B.target && B.y < 1.2 && B.target.noGrab <= 0 && dist(B.target, B) < 1.6 && spd < 40) {
           const receiver = B.target; B.last = receiver.team; receiver.runT = 0;
+          if (B.offside) {
+            const spotX = receiver.x, spotZ = receiver.z;
+            G.awardFreeKick(1 - receiver.team, spotX, spotZ, null, 'offside');
+            return;
+          }
           if (spd > 30 && Math.random() < 0.45) {
             B.vx *= 0.3; B.vz = B.vz * 0.3 + rand(-3, 3); receiver.noGrab = 0.35; B.target = null;
           } else {
