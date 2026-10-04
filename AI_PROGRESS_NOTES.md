@@ -165,6 +165,7 @@ Bu bölüm güncel durumu anlatır; yukarıdaki genel/eskimiş maddelerle çeli�
 - AI yaklaşımında Konami'nin açık eFootball rehberindeki açık pas hedefi/koşu ve takım oyun tarzı ilkeleri referans alındı; Konami'nin kapalı maç AI'sının aynısı olduğu iddia edilmez: https://www.konami.com/efootball/en/page/overview
 - Şut/pas uzun şarjı havadan vuruş yapar; pas hedefi belirlenir.
 - Sprint stamina tüketir ve bırakınca yeniler; top sprintte daha fazla öne açılır. `BASKI` ile kontrollü oyuncunun yanı sıra en yakın iki AI takım arkadaşı destek baskısı yapar.
+- Takım dizilişleri artık ayrı: Barcelona 4-3-3; Real Madrid 4-2-3-1 ve Arda Güler sağ hücum orta sahasında. Dizilişler sıralı 11 oyuncuyla eşlenir.
 - Maç kamerası topu takip eder ve kaleye yaklaşınca yakınlaşır; menü kamerası geniş açıda kalır. HUD’da aktif oyuncunun kondisyon yüzdesi görünür.
 - Şutlarda yön girdisi top spin'i üretir; top Magnus benzeri yanal kuvvetle kavis alır ve spin zamanla azalır. Shooting/passing değerleri isabeti, shooting/power değerleri şut gücünü etkiler.
 - Normal pas, ara pas ve orta için pas anındaki ikinci son savunmacı/top çizgisine göre ofsayt kontrolü yapılır; hedef oyuncu topa müdahale ederse savunmaya serbest vuruş verilir ve host'ta ofsayt bildirimi çıkar.
@@ -194,6 +195,6 @@ Bu bölüm güncel durumu anlatır; yukarıdaki genel/eskimiş maddelerle çeli�
 - `host.js` içindeki seyirci yerleşimi son bir 16:9 göz kontrolünden geçti; yayın sonrası aynı sahne yeni hesapta açılabiliyor olmalı.
 - ARA hedef/koşu/ilk dokunuş, stamina tüketim-toparlanma, pressure destek sayısı, sprintte topun daha çok açılması ve slide/foul senaryoları deterministik Node testleriyle geçti.
 - Son browser kontrollerinde JS hatası yoktu; 16:9 canvas çalışıyordu ve gamepad butonları çakışmıyordu.
-- 2026-10-04 ek doğrulama: `npm test` 13/13 geçti; dört JS dosyasının syntax kontrolleri ve `git diff --check` temiz. İki controller tarayıcı oturumu takım seçip maça geçti. Beş CC0 ses dosyasının browser metadata decode'u başarılı; crowd 138s, goal cheer 8s. İsim etiketleri topa yakın oyuncular/kontrolcü oyuncusu için küçük ve çerçevesiz görünür; idle oyuncular topa döner. CPU takımına verilen korner/taç otomatik oynanır; taç vuruşu saha içine yönlendirilir.
+- 2026-10-04 ek doğrulama: `npm test` 14/14 geçti; dört JS dosyasının syntax kontrolleri ve `git diff --check` temiz. İki controller tarayıcı oturumu takım seçip maça geçti. Beş CC0 ses dosyasının browser metadata decode'u başarılı; crowd 138s, goal cheer 8s. İsim etiketleri topa yakın oyuncular/kontrolcü oyuncusu için küçük ve çerçevesiz görünür; idle oyuncular topa döner. CPU takımına verilen korner/taç otomatik oynanır; taç vuruşu saha içine yönlendirilir.
 - Yeni Casual Male GLB browser sahnesinde yüklendi; mevcut iki takım forması görünür. Saha oyuncuları hâlâ low-poly ve fotogerçekçi değiller. Daha gerçekçi futbolcu GLB'si için blender-only OpenGameArt modelini dönüştürmek üzere Blender gerekir; kullanıcının ortamında Blender/FFmpeg kurulu değil.
 - Araştırma için oluşturulan PNG ekran görüntüleri temizlendi.

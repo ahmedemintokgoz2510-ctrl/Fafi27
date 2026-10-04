@@ -21,7 +21,8 @@
       G.players = []; G.teams = [[], []];
       for (let t = 0; t < 2; t++) {
         const dir = t === 0 ? 1 : -1;
-        cfg.formation.forEach((f, i) => {
+        const formation = cfg.teams[t].formation || cfg.formation;
+        formation.forEach((f, i) => {
             const identity = (cfg.teams[t].players || [])[i] || {};
             const stats = identity.stats || {};
             const p = {

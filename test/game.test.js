@@ -1,6 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createGame } = require('../public/js/game.js');
+global.window = global;
+require('../public/config.js');
+const projectCfg = global.FAFI;
+delete global.FAFI;
+delete global.window;
 
 const cfg = {
   formation: [
@@ -133,6 +138,18 @@ test('a touchline exit awards a throw-in to the team that did not touch the ball
   assert.equal(game.state, 'throwin');
   assert.equal(game.ball.owner.team, 1);
   assert.ok(Math.abs(game.ball.z - game.HW) < 0.5);
+});
+
+test('project teams use distinct 11-player formations and include Arda Guler in Real Madrid', () => {
+  const game = createGame(projectCfg, () => {});
+  game.start(3, [false, false]);
+
+  assert.equal(game.teams[0].length, 11);
+  assert.equal(game.teams[1].length, 11);
+  assert.equal(game.teams[0][7].role, 'MF');
+  assert.equal(game.teams[1][7].role, 'FW');
+  assert.equal(game.teams[1][9].name, 'Arda Guler');
+  assert.equal(game.teams[1][9].role, 'MF');
 });
 
 test('a defender last touching the ball over their goal line awards a corner', () => {

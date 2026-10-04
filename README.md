@@ -22,7 +22,7 @@ Ana menü (süre 3/5/8 dk, ses) → Oyna → QR kod → iki telefon okutur → t
 - DEĞİŞ: topa en yakın başka oyuncuyu kontrol et (normalde otomatik geçer)
 
 ## Dosyalar
-- `config.js` takım adı/renk/logo, diziliş (4-4-2)
+- `config.js` takım kadroları ve takıma özel dizilişler (Barcelona 4-3-3, Real Madrid 4-2-3-1)
 - `js/game.js` oyun mantığı (11'e 11, yapay zeka, kaleci, gol, aut, korner)
 - `js/host.js` tahta ekranı (three.js), menü, ağ
 - `js/controller.js` + `controller.html` telefon gamepad
