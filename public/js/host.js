@@ -112,14 +112,11 @@
       return { model, bounds, center, scale: 2.55 / size.y };
     });
     const placements = [];
-    [0, 2, 4, 6].forEach((row) => {
+    [2, 4, 6].forEach((row) => {
       const y = 0.42 + row * 0.62 + 0.26, offset = W / 2 + 3.8 + row * 1.65;
       [-1, 1].forEach((side) => {
         [-43, -26, -9, 9, 26, 43].forEach((x, index) => {
           placements.push({ x: x + row * 0.45, y, z: side * offset, rotation: side < 0 ? Math.PI : 0, variant: row + index });
-        });
-        [-20, 0, 20].forEach((z, index) => {
-          placements.push({ x: side * offset, y, z: z + row * 0.45, rotation: side < 0 ? -Math.PI / 2 : Math.PI / 2, variant: row + index + 2 });
         });
       });
     });
