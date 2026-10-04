@@ -23,10 +23,17 @@
         const dir = t === 0 ? 1 : -1;
         cfg.formation.forEach((f, i) => {
             const identity = (cfg.teams[t].players || [])[i] || {};
-            const p = { team: t, idx: i, role: f.role, name: identity.name || 'Oyuncu ' + (i + 1), number: identity.number || i + 1, dir, hx: f.x * HL * dir, hz: f.z * HW * dir, x: 0, z: 0, vx: 0, vz: 0,
-            face: t === 0 ? 0 : Math.PI, noGrab: 0, protect: 0, bias: Math.random() * 1.5, shootCd: 0, kickT: 0, kickSide: i % 2, diveT: 0, diveSide: 1,
-            slideT: 0, slideDuration: 0, slideCooldown: 0, slidePower: 0, slideX: 0, slideZ: 0, slideResolved: false,
-            stamina: 1, burstT: 0, touchPhase: 0, runT: 0, rx: 0, rz: 0 };
+            const stats = identity.stats || {};
+            const p = {
+              team: t, idx: i, role: f.role || identity.role || 'MF', name: identity.name || 'Oyuncu ' + (i + 1), number: identity.number || i + 1,
+              dir, hx: f.x * HL * dir, hz: f.z * HW * dir, x: 0, z: 0, vx: 0, vz: 0,
+              face: t === 0 ? 0 : Math.PI, noGrab: 0, protect: 0, bias: Math.random() * 1.5, shootCd: 0, kickT: 0, kickSide: i % 2, diveT: 0, diveSide: 1,
+              slideT: 0, slideDuration: 0, slideCooldown: 0, slidePower: 0, slideX: 0, slideZ: 0, slideResolved: false,
+              stamina: 1, burstT: 0, touchPhase: 0, runT: 0, rx: 0, rz: 0,
+              pace: clamp(Number(stats.pace) || 75, 40, 99), shooting: clamp(Number(stats.shooting) || 70, 20, 99),
+              passing: clamp(Number(stats.passing) || 70, 20, 99), defending: clamp(Number(stats.defending) || 70, 20, 99),
+              power: clamp(Number(stats.power) || 70, 20, 99), preferredFoot: stats.preferredFoot || 'R'
+            };
           G.players.push(p); G.teams[t].push(p);
         });
       }
@@ -47,6 +54,34 @@
       G.state = 'kickoff'; G.stateT = 1.5;
       emit('kickoff');
     }
+
+    function setSetPieceState(kind, team, x, z, face, player) {
+      const taker = player || nearestOf(G.teams[team], x, z, false) || G.teams[team][0];
+      G.players.forEach((p) => {
+        p.vx = 0; p.vz = 0; p.noGrab = p.team === team ? 0.25 : Math.max(p.noGrab, 1.0);
+      });
+      taker.face = face; taker.x = x - Math.cos(face) * 1.2; taker.z = z - Math.sin(face) * 1.2; taker.vx = 0; taker.vz = 0;
+      taker.protect = 0.9; taker.noGrab = 0.8; B.owner = taker; B.target = null; B.x = x; B.y = 0.48; B.z = z; B.vx = 0; B.vy = 0; B.vz = 0; B.ownT = 0; B.last = team;
+      G.state = kind; G.stateT = 1.6; emit(kind, { team, player: taker.number, x, z });
+    }
+
+    G.awardPenalty = function (team, player) {
+      const attacking = team ?? 0;
+      const x = attacking === 0 ? HL - 11 : -HL + 11;
+      const face = attacking === 0 ? 0 : Math.PI;
+      const candidates = G.teams[attacking].slice().sort((a, b) => (b.shooting + b.power) - (a.shooting + a.power));
+      const taker = player ? G.teams[attacking].find((p) => p.number === player) || candidates[0] : candidates[0];
+      setSetPieceState('penalty', attacking, x, 0, face, taker);
+    };
+
+    G.awardFreeKick = function (team, x, z, player) {
+      const attacking = team ?? 0;
+      const spotX = clamp(x ?? G.ball.x, -HL + 4, HL - 4);
+      const spotZ = clamp(z ?? G.ball.z, -HW + 4, HW - 4);
+      const face = attacking === 0 ? Math.atan2(0 - spotZ, HL - spotX) : Math.atan2(0 - spotZ, -HL - spotX);
+      const taker = player ? G.teams[attacking].find((p) => p.number === player) || G.teams[attacking][0] : nearestOf(G.teams[attacking], spotX, spotZ, false) || G.teams[attacking][0];
+      setSetPieceState('freekick', attacking, spotX, spotZ, face, taker);
+    };
 
     G.start = function (minutes, human) {
       G.score = [0, 0]; G.time = minutes * 60; G.human = human || [true, true];
@@ -85,7 +120,7 @@
       }
       if (!best) { if (ai) return false; kick(p, ax, az, 18 + power * 10, 0.02, loft ? 7 + power * 4 : 0); return true; }
       const d = dist(p, best);
-      const speed = clamp((d * 1.3 + 9) * (1 + power * 0.4), 14, 48);
+      const speed = clamp((d * 1.3 + 9) * (1 + power * 0.4) * (1 + (p.passing - 72) * 0.006), 14, 48);
       kick(p, best.x + best.vx * 0.3 - p.x, best.z + best.vz * 0.3 - p.z, speed, 0.03, loft ? 7 + power * 4 : 0);
       B.target = best;
       return true;
@@ -112,7 +147,7 @@
       const lead = clamp(dist(p, best) * 0.4 + 3, 6, 15);
       const targetX = clamp(best.x + p.dir * lead * 0.8 + ax * lead * 0.2, -HL + 3, HL - 3);
       const targetZ = clamp(best.z + az * lead * 0.5, -HW + 3, HW - 3);
-      const speed = clamp(Math.hypot(targetX - p.x, targetZ - p.z) * 1.25 + 8, 16, 46) * (1 + power * 0.25);
+      const speed = clamp(Math.hypot(targetX - p.x, targetZ - p.z) * 1.25 + 8, 16, 46) * (1 + power * 0.25) * (1 + (p.passing - 72) * 0.005);
       kick(p, targetX - p.x, targetZ - p.z, speed, 0.02);
       B.target = best; best.runT = 2.2; best.rx = targetX; best.rz = targetZ;
       return true;
@@ -145,14 +180,26 @@
         if ((ax * gx + az * gz) / gn > 0.6) { ax = ax * 0.3 + (gx / gn) * 0.7; az = az * 0.3 + (gz / gn) * 0.7; }
       }
       const air = loft || (!ai && charge > 0.5);
-      kick(p, ax, az, air ? 20 + 14 * charge : 24 + 22 * charge, 0.03 + 0.06 * charge, air ? 4 + charge * 7 : 0);
+      const shotPower = 1 + (p.shooting - 72) * 0.012 + (p.power - 72) * 0.008;
+      kick(p, ax, az, (air ? 20 + 14 * charge : 24 + 22 * charge) * shotPower, 0.03 + 0.06 * charge, air ? 4 + charge * 7 : 0);
       p.shootCd = 1;
     }
 
     G.press = function (t, btn, down, options = {}) {
-      if (G.state !== 'play') return;
       const inp = G.input[t];
       if (!G.human[t]) return;
+      if (G.state !== 'play') {
+        if ((G.state === 'penalty' || G.state === 'freekick') && !down && btn === 'shoot') {
+          const p = G.ctrl[t];
+          if (p && B.owner === p) {
+            const charge = clamp(Number(options.hold) || 0, 0, 1.2) / 1.2;
+            doShoot(p, charge, false, !!options.loft);
+            G.state = 'play';
+            emit('whistle');
+          }
+        }
+        return;
+      }
       if (btn === 'sprint') {
         inp.sprint = !!down;
         const carrier = G.ctrl[t];
@@ -247,7 +294,8 @@
       let dx = 0, dz = 0;
       const chasesBall = inp.pressure && (!B.owner || B.owner.team !== p.team);
       const canSprint = inp.sprint && p.stamina > 0.08;
-      const sp = 12.5 * (canSprint ? 1.45 : chasesBall ? 1.15 : 1) * (B.owner === p ? 0.92 : 1) * (inp.charge >= 0 ? 0.7 : 1) * (0.82 + 0.18 * p.stamina) * (p.burstT > 0 ? 1.18 : 1);
+      const paceFactor = 0.82 + (p.pace / 100) * 0.46;
+      const sp = 12.5 * paceFactor * (canSprint ? 1.45 : chasesBall ? 1.15 : 1) * (B.owner === p ? 0.92 : 1) * (inp.charge >= 0 ? 0.7 : 1) * (0.82 + 0.18 * p.stamina) * (p.burstT > 0 ? 1.18 : 1);
       p.stamina = clamp(p.stamina + (canSprint && m > 0.12 ? -0.1 : !inp.sprint ? 0.04 : 0) * dt, 0, 1);
       if (chasesBall) {
         const tx = B.x + B.vx * 0.18 - p.x, tz = B.z + B.vz * 0.18 - p.z;
@@ -261,8 +309,8 @@
 
     function aiStep(p, dt) {
       const dir = p.dir, own = B.owner, hasBall = own === p, teamHas = own && own.team === p.team;
-      let tx = p.x, tz = p.z, sp = 9.4;
-      if (p.runT > 0 && !hasBall && p.role !== 'GK') { p.runT -= dt; moveTo(p, p.rx, p.rz, 11.8, dt); return; }
+      let tx = p.x, tz = p.z, sp = 9.4 * (0.84 + (p.pace / 100) * 0.38);
+      if (p.runT > 0 && !hasBall && p.role !== 'GK') { p.runT -= dt; moveTo(p, p.rx, p.rz, 11.8 * (0.84 + (p.pace / 100) * 0.38), dt); return; }
       if (p.role === 'GK') {
         const gx = -dir * HL;
         tx = gx + dir * 2; tz = clamp(B.z * 0.3, -GW + 0.7, GW - 0.7); sp = 8;
@@ -317,10 +365,13 @@
           if (dist(tackler, opponent) > 1.6) continue;
           tackler.slideResolved = true;
           if (tackler.slidePower >= 0.8) {
-            const restartX = clamp(B.x, -HL + 2, HL - 2), restartZ = clamp(B.z, -HW + 2, HW - 2);
             tackler.slideT = 0; tackler.vx = tackler.vz = 0;
-            placeRestart(opponent, restartX, restartZ, Math.atan2(tackler.z - opponent.z, tackler.x - opponent.x));
-            emit('foul', { team: opponent.team, player: opponent.number });
+            const attackingTeam = B.owner && B.owner.team === tackler.team ? tackler.team : (B.owner ? B.owner.team : 1 - tackler.team);
+            const foulSpotX = clamp(B.x, -HL + 2, HL - 2), foulSpotZ = clamp(B.z, -HW + 2, HW - 2);
+            const isPenalty = (attackingTeam === 0 && B.x > HL - 18) || (attackingTeam === 1 && B.x < -HL + 18);
+            if (isPenalty) G.awardPenalty(attackingTeam);
+            else G.awardFreeKick(attackingTeam, foulSpotX, foulSpotZ);
+            emit('foul', { team: opponent.team, player: opponent.number, restart: isPenalty ? 'penalty' : 'freekick' });
           } else if (B.owner === opponent || dist(opponent, B) < 2.3) {
             B.owner = null; B.target = null; B.x = opponent.x; B.y = 0.48; B.z = opponent.z;
             B.vx = tackler.slideX * (8 + tackler.slidePower * 12); B.vy = 0.8; B.vz = tackler.slideZ * (8 + tackler.slidePower * 12);
@@ -452,6 +503,12 @@
       dt = Math.min(dt, 0.05);
       if (G.state === 'kickoff') {
         G.stateT -= dt;
+        if (G.stateT <= 0) { G.state = 'play'; emit('whistle'); }
+        return;
+      }
+      if (G.state === 'penalty' || G.state === 'freekick') {
+        G.stateT -= dt;
+        G.players.forEach((p) => { p.vx = p.vz = 0; });
         if (G.stateT <= 0) { G.state = 'play'; emit('whistle'); }
         return;
       }

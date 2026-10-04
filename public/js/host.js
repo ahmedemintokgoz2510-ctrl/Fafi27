@@ -13,9 +13,37 @@
   let game = FafiGame.createGame(CFG, onGameEvent);
   game.start(minutes, [false, false]);   // menü arkasında duran önizleme
 
-  // ---------- ses (dosya yoksa sessizce atlanır) ----------
+  // ---------- ses (dosya yoksa WebAudio fallback kullanır) ----------
   const audio = {};
   const SOUND_FILES = { whistle: 'whistle.mp3', crowd: 'crowd.mp3', goal: 'goal.mp3', kick: 'kick.mp3' };
+  let audioCtx = null;
+  function ensureAudioCtx() {
+    if (audioCtx) return audioCtx;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    audioCtx = new Ctx();
+    return audioCtx;
+  }
+  function fallbackTone(freq, duration, type = 'triangle', gainValue = 0.05, sweep = 0) {
+    const ctx = ensureAudioCtx();
+    if (!ctx || muted) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    if (sweep) osc.frequency.exponentialRampToValueAtTime(Math.max(60, freq + sweep), now + duration);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(gainValue, now + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now); osc.stop(now + duration);
+  }
+  function fallbackSfx(kind) {
+    if (kind === 'whistle') { fallbackTone(900, 0.18, 'square', 0.04, 280); setTimeout(() => fallbackTone(1200, 0.14, 'square', 0.03, 220), 55); }
+    else if (kind === 'kick') { fallbackTone(180, 0.11, 'sawtooth', 0.04, -70); }
+    else if (kind === 'goal') { fallbackTone(290, 0.22, 'triangle', 0.08, 160); setTimeout(() => fallbackTone(440, 0.28, 'triangle', 0.08, 180), 90); }
+  }
   function loadAudio() {
     if (audio.loaded) return; audio.loaded = true;
     Object.keys(SOUND_FILES).forEach((k) => {
@@ -26,11 +54,16 @@
     });
   }
   function snd(k) {
-    const a = audio[k]; if (muted || !a || a.bad) return;
-    try { a.currentTime = 0; a.play().catch(() => {}); } catch (e) {}
+    const a = audio[k]; if (muted) return;
+    if (a && !a.bad) {
+      try { a.currentTime = 0; a.play().catch(() => {}); } catch (e) {}
+      return;
+    }
+    fallbackSfx(k);
   }
   function crowd(on) {
-    const a = audio.crowd; if (!a || a.bad) return;
+    const a = audio.crowd; if (muted) return;
+    if (!a || a.bad) return;
     if (on && !muted) a.play().catch(() => {}); else a.pause();
   }
   function setMuted(m) {
@@ -232,76 +265,106 @@
   }
   const meshes = game.players.map((p) => makePlayerMesh(p.team, p));
   const characterAnimation = new Array(game.players.length).fill(null);
-  new THREE.GLTFLoader().load('assets/models/animated-human.glb', (gltf) => {
-    const sourceBounds = new THREE.Box3().setFromObject(gltf.scene);
-    const sourceHeight = sourceBounds.getSize(new THREE.Vector3()).y;
-    const sourceCenter = sourceBounds.getCenter(new THREE.Vector3());
-    const scale = 2.35 / sourceHeight;
-    const clip = (suffix) => gltf.animations.find((animation) => animation.name.endsWith('|' + suffix));
-    const clips = { idle: clip('Idle'), run: clip('Run'), jump: clip('Jump') };
+  const getBone = (actor, names) => {
+    for (const name of names) {
+      const bone = actor.getObjectByName(name);
+      if (bone) return bone;
+    }
+    return null;
+  };
+  const loadPlayerModel = (index = 0) => {
+    const candidates = ['assets/models/realistic-human.glb', 'assets/models/animated-human.glb'];
+    const url = candidates[index];
+    if (!url) {
+      console.warn('No animated human model was found; falling back to primitive capsule players.');
+      return;
+    }
+    new THREE.GLTFLoader().load(url, (gltf) => {
+      const sourceBounds = new THREE.Box3().setFromObject(gltf.scene);
+      const sourceHeight = sourceBounds.getSize(new THREE.Vector3()).y || 1;
+      const sourceCenter = sourceBounds.getCenter(new THREE.Vector3());
+      const scale = 2.35 / sourceHeight;
+      const clip = (suffix) => {
+        const target = suffix.toLowerCase();
+        return gltf.animations.find((animation) => {
+          const name = (animation.name || '').toLowerCase();
+          return name.includes(target) || name.endsWith('|' + target) || name.endsWith('/' + target);
+        });
+      };
+      const clips = { idle: clip('Idle'), run: clip('Run'), jump: clip('Jump') };
 
-    meshes.forEach((mesh, i) => {
-      const player = game.players[i], team = CFG.teams[player.team];
-      const actor = THREE.SkeletonUtils.clone(gltf.scene);
-      actor.scale.setScalar(scale * 1.05); actor.rotation.y = Math.PI / 2;
-      actor.position.set(-sourceCenter.x * scale, -sourceBounds.min.y * scale, -sourceCenter.z * scale);
-      actor.traverse((object) => {
-        if (!object.isSkinnedMesh) return;
-        object.frustumCulled = false;
-        const material = object.material && object.material.clone ? object.material.clone() : object.material;
-        if (material && material.color) {
-          material.color.set(['#d8ad90', '#bd896a', '#986c53', '#e0bc9c'][player.idx % 4]);
-          material.roughness = 0.88;
-          material.metalness = 0.03;
-          material.clearcoat = 0.12;
+      meshes.forEach((mesh, i) => {
+        const player = game.players[i], team = CFG.teams[player.team];
+        const actor = THREE.SkeletonUtils.clone(gltf.scene);
+        actor.scale.setScalar(scale * 1.05); actor.rotation.y = Math.PI / 2;
+        actor.position.set(-sourceCenter.x * scale, -sourceBounds.min.y * scale, -sourceCenter.z * scale);
+        actor.traverse((object) => {
+          if (!object.isSkinnedMesh) return;
+          object.frustumCulled = false;
+          const material = object.material && object.material.clone ? object.material.clone() : object.material;
+          if (material && material.color) {
+            material.color.set(['#d8ad90', '#bd896a', '#986c53', '#e0bc9c'][player.idx % 4]);
+            material.roughness = 0.88;
+            material.metalness = 0.03;
+            material.clearcoat = 0.12;
+          }
+          object.material = material;
+        });
+
+        const spine = getBone(actor, ['Spine1', 'Spine', 'Spine_01']);
+        const hips = getBone(actor, ['Hips', 'Pelvis']);
+        const head = getBone(actor, ['Head', 'HeadTop_End', 'Neck']);
+        const leftLeg = getBone(actor, ['LeftUpLeg', 'LeftLeg', 'LeftUpperLeg']);
+        const rightLeg = getBone(actor, ['RightUpLeg', 'RightLeg', 'RightUpperLeg']);
+        const leftFoot = getBone(actor, ['LeftFoot', 'LeftToeBase']);
+        const rightFoot = getBone(actor, ['RightFoot', 'RightToeBase']);
+        if (spine) {
+          const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.0125, 0.0135, 0.037, 16), mat(player.role === 'GK' ? '#d4ae48' : team.color));
+          shirt.position.y = 0.003; spine.add(shirt);
+          const trim = new THREE.Mesh(new THREE.TorusGeometry(0.009, 0.001, 6, 16), mat(team.color2));
+          trim.position.y = 0.019; spine.add(trim);
+          [-1, 1].forEach((side) => {
+            const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.0014, 0.032, 0.0007), mat(team.color2));
+            stripe.position.set(side * 0.004, 0.003, 0.010); spine.add(stripe);
+          });
         }
-        object.material = material;
-      });
-
-      const spine = actor.getObjectByName('Spine1'), hips = actor.getObjectByName('Hips'), head = actor.getObjectByName('Head');
-      if (spine) {
-        const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.0125, 0.0135, 0.037, 16), mat(player.role === 'GK' ? '#d4ae48' : team.color));
-        shirt.position.y = 0.003; spine.add(shirt);
-        const trim = new THREE.Mesh(new THREE.TorusGeometry(0.009, 0.001, 6, 16), mat(team.color2));
-        trim.position.y = 0.019; spine.add(trim);
-        [-1, 1].forEach((side) => {
-          const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.0014, 0.032, 0.0007), mat(team.color2));
-          stripe.position.set(side * 0.004, 0.003, 0.010); spine.add(stripe);
+        if (hips) {
+          const shorts = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.0095, 0.021, 14), mat(player.role === 'GK' ? '#273442' : (team.shortsColor || team.color)));
+          shorts.position.y = -0.006; hips.add(shorts);
+        }
+        if (head) {
+          const hair = new THREE.Mesh(new THREE.SphereGeometry(0.0062, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(['#302a27', '#211d1b', '#5a3c2d', '#382c25'][player.idx % 4]));
+          hair.position.y = 0.001; head.add(hair);
+          [-1, 1].forEach((side) => {
+            const eye = new THREE.Mesh(new THREE.SphereGeometry(0.0008, 8, 6), mat('#211d1b'));
+            eye.position.set(side * 0.0018, 0.0006, 0.005); head.add(eye);
+            const ear = new THREE.Mesh(new THREE.SphereGeometry(0.0011, 8, 6), mat('#bd896a'));
+            ear.position.set(side * 0.0048, 0, 0); head.add(ear);
+          });
+          const nose = new THREE.Mesh(new THREE.SphereGeometry(0.001, 8, 6), mat('#bd896a'));
+          nose.position.set(0, 0, 0.006); head.add(nose);
+        }
+        [leftFoot, rightFoot].forEach((foot) => {
+          if (!foot) return;
+          const boot = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.0025, 0.012), mat('#202327'));
+          boot.position.z = 0.003; foot.add(boot);
         });
-      }
-      if (hips) {
-        const shorts = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.0095, 0.021, 14), mat(player.role === 'GK' ? '#273442' : (team.shortsColor || team.color)));
-        shorts.position.y = -0.006; hips.add(shorts);
-      }
-      if (head) {
-        const hair = new THREE.Mesh(new THREE.SphereGeometry(0.0062, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat(['#302a27', '#211d1b', '#5a3c2d', '#382c25'][player.idx % 4]));
-        hair.position.y = 0.001; head.add(hair);
-        [-1, 1].forEach((side) => {
-          const eye = new THREE.Mesh(new THREE.SphereGeometry(0.0008, 8, 6), mat('#211d1b'));
-          eye.position.set(side * 0.0018, 0.0006, 0.005); head.add(eye);
-          const ear = new THREE.Mesh(new THREE.SphereGeometry(0.0011, 8, 6), mat('#bd896a'));
-          ear.position.set(side * 0.0048, 0, 0); head.add(ear);
-        });
-        const nose = new THREE.Mesh(new THREE.SphereGeometry(0.001, 8, 6), mat('#bd896a'));
-        nose.position.set(0, 0, 0.006); head.add(nose);
-      }
-      ['LeftFoot', 'RightFoot'].forEach((boneName) => {
-        const foot = actor.getObjectByName(boneName);
-        if (!foot) return;
-        const boot = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.0025, 0.012), mat('#202327'));
-        boot.position.z = 0.003; foot.add(boot);
-      });
 
-      const mixer = new THREE.AnimationMixer(actor);
-      const idle = clips.idle && mixer.clipAction(clips.idle), run = clips.run && mixer.clipAction(clips.run), jump = clips.jump && mixer.clipAction(clips.jump);
-      [idle, run, jump].forEach((action) => { if (action) action.play(); });
-      if (idle) idle.setEffectiveWeight(1);
-      if (run) run.setEffectiveWeight(0);
-      if (jump) jump.setEffectiveWeight(0);
-      mesh.userData.body.visible = false; mesh.add(actor);
-      characterAnimation[i] = { actor, mixer, idle, run, jump, leftLeg: actor.getObjectByName('LeftUpLeg'), rightLeg: actor.getObjectByName('RightUpLeg') };
+        const mixer = new THREE.AnimationMixer(actor);
+        const idle = clips.idle && mixer.clipAction(clips.idle), run = clips.run && mixer.clipAction(clips.run), jump = clips.jump && mixer.clipAction(clips.jump);
+        [idle, run, jump].forEach((action) => { if (action) action.play(); });
+        if (idle) idle.setEffectiveWeight(1);
+        if (run) run.setEffectiveWeight(0);
+        if (jump) jump.setEffectiveWeight(0);
+        mesh.userData.body.visible = false; mesh.add(actor);
+        characterAnimation[i] = { actor, mixer, idle, run, jump, leftLeg, rightLeg };
+      });
+    }, undefined, (error) => {
+      if (index < candidates.length - 1) loadPlayerModel(index + 1);
+      else console.error('Animated human model failed to load', error);
     });
-  }, undefined, (error) => console.error('Animated human model failed to load', error));
+  };
+  loadPlayerModel();
   const rings = [0, 1].map(() => {
     const r = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.2, 28), new THREE.MeshBasicMaterial({ color: '#ece8dc', transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
     r.rotation.x = -Math.PI / 2; r.position.y = 0.06; r.visible = false; scene.add(r); return r;
@@ -352,12 +415,12 @@
       if (animation) {
         const motion = Math.min(1, sp / 3.2), jumping = p.role === 'GK' ? dive : 0;
         if (animation.idle) animation.idle.setEffectiveWeight((1 - Math.max(motion, slide)) * (1 - jumping));
-        if (animation.run) { animation.run.setEffectiveWeight(Math.max(motion, slide * 0.8) * (1 - jumping)); animation.run.setEffectiveTimeScale(clamp(0.65 + sp * 0.12, 0.65, 1.8)); }
+        if (animation.run) { animation.run.setEffectiveWeight(Math.max(motion, slide * 0.8) * (1 - jumping)); animation.run.setEffectiveTimeScale(clamp(0.7 + sp * 0.16, 0.7, 2.2)); }
         if (animation.jump) animation.jump.setEffectiveWeight(jumping);
         animation.actor.rotation.z = -slide * 0.8;
         animation.mixer.update(dt);
         const kickLeg = p.kickSide === 0 ? animation.leftLeg : animation.rightLeg;
-        if (kickLeg && kick > 0) kickLeg.rotation.x += kick * 0.8;
+        if (kickLeg && kick > 0) kickLeg.rotation.x += kick * 1.2;
       }
       m.userData.nameLabel.visible = false;
     });
@@ -482,6 +545,8 @@
     else if (type === 'whistle') snd('whistle');
     else if (type === 'kick') snd('kick');
     else if (type === 'tackle') { snd('kick'); both({ t: 'vib', ms: 45 }); }
+    else if (type === 'penalty') { banner('PENALTİ!<small>' + CFG.teams[d.team].name + '</small>', 2200); snd('whistle'); both({ t: 'vib', ms: 180 }); }
+    else if (type === 'freekick') { banner('SERBEST VURUŞ!<small>' + CFG.teams[d.team].name + '</small>', 2200); snd('whistle'); both({ t: 'vib', ms: 170 }); }
     else if (type === 'foul') { banner('FAUL!<small>' + CFG.teams[d.team].name + '</small>', 1800); snd('whistle'); both({ t: 'vib', ms: 130 }); }
     else if (type === 'goal') {
       banner('GOL!<small>' + CFG.teams[d.team].name + '</small>', 3000); snd('goal');
