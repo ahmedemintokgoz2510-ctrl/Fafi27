@@ -66,6 +66,7 @@
     $('teamName').textContent = t.name;
     setSprintState(false, false);
     show('pad');
+    restoreControlLayout();
     try { if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
   }
 
@@ -109,6 +110,74 @@
 
   // tuşlar
   let chargeT0 = 0, chargeRaf = 0;
+  const layoutKey = 'fafi27-control-layout-v1';
+  const layoutButtonIds = ['bShoot', 'bPass', 'bSwitch', 'bSprint', 'bPressure'];
+  let layoutEditing = false, draggedControl = null, dragPointer = null, dragOffsetX = 0, dragOffsetY = 0;
+  let controlPositions = {};
+
+  function setControlPosition(el, x, y) {
+    const rect = el.getBoundingClientRect();
+    const px = Math.max(rect.width / 2 + 8, Math.min(innerWidth - rect.width / 2 - 8, x));
+    const py = Math.max(rect.height / 2 + 8, Math.min(innerHeight - rect.height / 2 - 8, y));
+    el.style.right = 'auto'; el.style.bottom = 'auto';
+    el.style.left = (px / innerWidth * 100) + '%'; el.style.top = (py / innerHeight * 100) + '%';
+    el.style.transform = 'translate(-50%, -50%)';
+    controlPositions[el.id] = { x: px / innerWidth, y: py / innerHeight };
+  }
+
+  function restoreControlLayout() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(layoutKey) || '{}');
+      layoutButtonIds.forEach((id) => {
+        const position = stored[id];
+        if (position && Number.isFinite(position.x) && Number.isFinite(position.y)) {
+          setControlPosition($(id), position.x * innerWidth, position.y * innerHeight);
+        }
+      });
+    } catch (e) { controlPositions = {}; }
+  }
+
+  function beginControlDrag(e, el) {
+    e.preventDefault(); e.stopPropagation();
+    const rect = el.getBoundingClientRect();
+    draggedControl = el; dragPointer = e.pointerId;
+    dragOffsetX = e.clientX - (rect.left + rect.width / 2);
+    dragOffsetY = e.clientY - (rect.top + rect.height / 2);
+    el.setPointerCapture(e.pointerId);
+  }
+
+  document.addEventListener('pointermove', (e) => {
+    if (!layoutEditing || !draggedControl || e.pointerId !== dragPointer) return;
+    e.preventDefault();
+    setControlPosition(draggedControl, e.clientX - dragOffsetX, e.clientY - dragOffsetY);
+  }, { passive: false });
+  document.addEventListener('pointerup', (e) => {
+    if (e.pointerId !== dragPointer) return;
+    draggedControl = null; dragPointer = null;
+  });
+  document.addEventListener('pointercancel', (e) => {
+    if (e.pointerId !== dragPointer) return;
+    draggedControl = null; dragPointer = null;
+  });
+
+  $('layoutToggle').addEventListener('click', () => {
+    layoutEditing = !layoutEditing;
+    $('pad').classList.toggle('editing', layoutEditing);
+    $('layoutToggle').textContent = layoutEditing ? 'BİTTİ' : 'DÜZEN';
+    $('layoutToggle').setAttribute('aria-label', layoutEditing ? 'Konumları kaydet ve çık' : 'Buton konumlarını düzenle');
+    if (!layoutEditing) {
+      try { localStorage.setItem(layoutKey, JSON.stringify(controlPositions)); } catch (e) {}
+    }
+  });
+  $('layoutReset').addEventListener('click', () => {
+    controlPositions = {};
+    try { localStorage.removeItem(layoutKey); } catch (e) {}
+    layoutButtonIds.forEach((id) => {
+      const el = $(id);
+      ['left', 'top', 'right', 'bottom', 'transform'].forEach((property) => el.style.removeProperty(property));
+    });
+  });
+
   function chargeLoop() {
     $('chargeFill').style.width = Math.min(1, (performance.now() - chargeT0) / 900) * 100 + '%';
     chargeRaf = requestAnimationFrame(chargeLoop);
@@ -116,6 +185,7 @@
   function bindBtn(id, name) {
     const el = $(id); let pid = null;
     el.addEventListener('pointerdown', (e) => {
+      if (layoutEditing) { beginControlDrag(e, el); return; }
       if (pid !== null) return; pid = e.pointerId; el.setPointerCapture(pid); el.classList.add('on');
       socket.emit('c2h', { t: 'btn', b: name, d: true });
       if (navigator.vibrate) navigator.vibrate(12);
@@ -133,6 +203,7 @@
 
   const sprintButton = $('bSprint'); let sprintPointer = null;
   sprintButton.addEventListener('pointerdown', (e) => {
+    if (layoutEditing) { beginControlDrag(e, sprintButton); return; }
     if (sprintPointer !== null) return;
     sprintPointer = e.pointerId; sprintButton.setPointerCapture(sprintPointer);
     setSprintState(!sprintEnabled, true);

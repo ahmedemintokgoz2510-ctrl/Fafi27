@@ -36,13 +36,19 @@
   #teamStrip{position:absolute;top:0;left:env(safe-area-inset-left);right:env(safe-area-inset-right);height:.3rem;background:var(--team);box-shadow:0 0 18px rgba(255,255,255,.18)}
   #teamName{position:absolute;top:calc(env(safe-area-inset-top) + .7rem);left:0;right:0;text-align:center;font-family:var(--display);font-size:1.05rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
   #left{position:absolute;left:0;top:0;bottom:0;width:54%;touch-action:none}
-  #right{position:absolute;right:0;top:0;bottom:0;width:46%;touch-action:none}
+  #right{position:absolute;inset:0;touch-action:none;pointer-events:none}
   #base{position:absolute;left:clamp(26px,7vw,54px);bottom:calc(env(safe-area-inset-bottom) + 24px);width:150px;height:150px;border-radius:50%;border:2px solid rgba(236,232,220,.45);background:rgba(236,232,220,.07);box-shadow:inset 0 0 30px rgba(236,232,220,.12),0 12px 30px rgba(0,0,0,.2);display:block;pointer-events:none;opacity:.68;transition:opacity .15s}
   #base.active{opacity:1}
   #knob{position:absolute;left:50%;top:50%;width:62px;height:62px;margin:-31px 0 0 -31px;border-radius:50%;background:linear-gradient(135deg, var(--chalk), #d6cfbe);box-shadow:0 8px 20px rgba(0,0,0,.24);opacity:.95}
   #hint{position:absolute;left:clamp(26px,7vw,54px);bottom:calc(env(safe-area-inset-bottom) + 184px);color:rgba(236,232,220,.72);font-size:.78rem;letter-spacing:.12em;text-transform:uppercase}
-  .btn{position:absolute;display:flex;align-items:center;justify-content:center;padding:0;border-radius:50%;border:2px solid rgba(236,232,220,.35);background:linear-gradient(180deg,rgba(22,34,27,.96),rgba(15,26,20,.88));font-family:var(--display);font-weight:700;color:var(--chalk);touch-action:none;box-shadow:0 12px 24px rgba(0,0,0,.3),inset 0 1px rgba(255,255,255,.12)}
+  .btn{position:absolute;display:flex;align-items:center;justify-content:center;padding:0;border-radius:50%;border:2px solid rgba(236,232,220,.35);background:linear-gradient(180deg,rgba(22,34,27,.96),rgba(15,26,20,.88));font-family:var(--display);font-weight:700;color:var(--chalk);touch-action:none;pointer-events:auto;box-shadow:0 12px 24px rgba(0,0,0,.3),inset 0 1px rgba(255,255,255,.12)}
   .btn.on{background:linear-gradient(180deg,var(--chalk),#dfe0d9);color:#10201a;border-color:var(--chalk);box-shadow:0 0 0 5px rgba(236,232,220,.12),0 14px 30px rgba(236,232,220,.2)}
+  #layoutToggle,#layoutReset{position:absolute;top:calc(env(safe-area-inset-top) + 12px);z-index:8;height:38px;padding:0 .85rem;border:1px solid rgba(236,232,220,.38);border-radius:6px;background:rgba(15,26,20,.9);font-size:.72rem;font-weight:700;color:var(--chalk);touch-action:manipulation}
+  #layoutToggle{right:calc(env(safe-area-inset-right) + 12px)}
+  #layoutReset{right:calc(env(safe-area-inset-right) + 92px);display:none;color:var(--brass)}
+  #pad.editing .btn{outline:2px dashed var(--brass);outline-offset:3px;opacity:.82}
+  #pad.editing #layoutReset{display:block}
+  #pad.editing #layoutToggle{border-color:var(--brass);color:var(--brass)}
   #bShoot{--size:clamp(108px,27vmin,148px);width:var(--size);height:var(--size);right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px));bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px));font-size:1.7rem;border-color:rgba(236,232,220,.72)}
   #bPass{--size:clamp(82px,21vmin,108px);width:var(--size);height:var(--size);right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px));bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px) + clamp(108px,27vmin,148px) + 12px);font-size:1.2rem}
   #bSwitch{--size:clamp(68px,16vmin,86px);width:var(--size);height:var(--size);right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px) + clamp(108px,27vmin,148px) + 14px);bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px) + 4px);font-size:.78rem;color:var(--muted)}
@@ -86,6 +92,8 @@
     <button class="btn" id="bSprint" type="button" aria-label="Koşmayı aç veya kapat" aria-pressed="false">KOŞ</button>
     <button class="btn" id="bPressure" type="button" aria-label="Basılı tutarak topa baskı yap">BASKI</button>
   </div>
+  <button id="layoutReset" type="button" aria-label="Buton konumlarını varsayılana döndür">SIFIRLA</button>
+  <button id="layoutToggle" type="button" aria-label="Buton konumlarını düzenle">DÜZEN</button>
 </div>
 <div id="rotate">Telefonu yatay çevir</div>
 
