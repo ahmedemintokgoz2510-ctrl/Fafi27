@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f1a14">
+<title>Fafi 27 - Gamepad</title>
+<style>
+  :root{--bg:#0f1a14;--panel:#16221b;--line:#2b3a31;--chalk:#ece8dc;--muted:#97a399;--brass:#bfa56a;--team:#97a399;
+    --display:'Barlow Condensed','Arial Narrow','Roboto Condensed',Arial,sans-serif;
+    --text:system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif}
+  *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--chalk);font-family:var(--text);touch-action:none}
+  .screen{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:1.2rem;padding:1.2rem;text-align:center}
+  .screen.on{display:flex}
+  h1{font-family:var(--display);font-size:2.4rem;font-weight:700}
+  p{color:var(--muted);line-height:1.5}
+  input,button{font:inherit;color:inherit}
+  input{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.8rem 1rem;text-align:center;font-size:1.4rem;letter-spacing:.2em;text-transform:uppercase;width:11rem}
+  button{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:.8rem 1.4rem}
+  button.primary{background:var(--chalk);color:#10201a;border-color:var(--chalk);font-weight:600}
+
+  /* takım seçimi */
+  .cards{display:flex;gap:1rem;width:100%;max-width:34rem}
+  .card{flex:1;padding:1.4rem .8rem;border-radius:10px;border:2px solid var(--line);background:var(--panel);display:flex;flex-direction:column;align-items:center;gap:.7rem}
+  .card .sw{width:3.4rem;height:3.4rem;border-radius:50%;border:3px solid var(--chalk)}
+  .card img{height:3.4rem}
+  .card b{font-family:var(--display);font-size:1.7rem;font-weight:600}
+  .card.mine{border-color:var(--brass)}
+  .card.taken{opacity:.4}
+  #pickMsg{min-height:1.4rem;color:var(--brass)}
+
+  /* gamepad */
+  #pad{display:none;position:fixed;inset:0;padding:0;justify-content:flex-start;background:repeating-linear-gradient(90deg,rgba(255,255,255,.018) 0,rgba(255,255,255,.018) 1px,transparent 1px,transparent 14%),radial-gradient(ellipse at 50% 115%,rgba(42,83,56,.34),transparent 62%),linear-gradient(180deg,rgba(11,20,15,.96),rgba(11,20,15,.86));}
+  #pad.on{display:block}
+  #teamStrip{position:absolute;top:0;left:env(safe-area-inset-left);right:env(safe-area-inset-right);height:.3rem;background:var(--team);box-shadow:0 0 18px rgba(255,255,255,.18)}
+  #teamName{position:absolute;top:calc(env(safe-area-inset-top) + .7rem);left:0;right:0;text-align:center;font-family:var(--display);font-size:1.05rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+  #left{position:absolute;left:0;top:0;bottom:0;width:54%;touch-action:none}
+  #right{position:absolute;right:0;top:0;bottom:0;width:46%;touch-action:none}
+  #base{position:absolute;left:clamp(26px,7vw,54px);bottom:calc(env(safe-area-inset-bottom) + 24px);width:150px;height:150px;border-radius:50%;border:2px solid rgba(236,232,220,.45);background:rgba(236,232,220,.07);box-shadow:inset 0 0 30px rgba(236,232,220,.12),0 12px 30px rgba(0,0,0,.2);display:block;pointer-events:none;opacity:.68;transition:opacity .15s}
+  #base.active{opacity:1}
+  #knob{position:absolute;left:50%;top:50%;width:62px;height:62px;margin:-31px 0 0 -31px;border-radius:50%;background:linear-gradient(135deg, var(--chalk), #d6cfbe);box-shadow:0 8px 20px rgba(0,0,0,.24);opacity:.95}
+  #hint{position:absolute;left:clamp(26px,7vw,54px);bottom:calc(env(safe-area-inset-bottom) + 184px);color:rgba(236,232,220,.72);font-size:.78rem;letter-spacing:.12em;text-transform:uppercase}
+  .btn{position:absolute;display:flex;align-items:center;justify-content:center;padding:0;border-radius:50%;border:2px solid rgba(236,232,220,.35);background:linear-gradient(180deg,rgba(22,34,27,.96),rgba(15,26,20,.88));font-family:var(--display);font-weight:700;color:var(--chalk);touch-action:none;box-shadow:0 12px 24px rgba(0,0,0,.3),inset 0 1px rgba(255,255,255,.12)}
+  .btn.on{background:linear-gradient(180deg,var(--chalk),#dfe0d9);color:#10201a;border-color:var(--chalk);box-shadow:0 0 0 5px rgba(236,232,220,.12),0 14px 30px rgba(236,232,220,.2)}
+  #bShoot{--size:clamp(108px,27vmin,148px);width:var(--size);height:var(--size);right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px));bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px));font-size:1.7rem;border-color:rgba(236,232,220,.72)}
+  #bPass{--size:clamp(82px,21vmin,108px);width:var(--size);height:var(--size);right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px));bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px) + clamp(108px,27vmin,148px) + 12px);font-size:1.2rem}
+  #bSwitch{--size:clamp(68px,16vmin,86px);width:var(--size);height:var(--size);right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px) + clamp(108px,27vmin,148px) + 14px);bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px) + 4px);font-size:.78rem;color:var(--muted)}
+  #bSprint,#bPressure{--size:clamp(72px,16vmin,84px);width:var(--size);height:var(--size);bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px) + clamp(68px,16vmin,86px) + 14px);font-size:.72rem}
+  #bSprint{right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px) + clamp(108px,27vmin,148px) + clamp(68px,16vmin,86px) + 22px)}
+  #bPressure{right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px) + clamp(108px,27vmin,148px) + clamp(68px,16vmin,86px) + clamp(72px,16vmin,84px) + 30px)}
+  #charge{position:absolute;left:20%;right:20%;bottom:18%;height:5px;background:rgba(15,26,20,.8);border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,.4)}
+  #chargeFill{height:100%;width:0;background:linear-gradient(90deg,var(--brass),#f5d183);transition:width .04s linear}
+  #rotate{position:fixed;inset:0;z-index:5;background:var(--bg);display:none;align-items:center;justify-content:center;text-align:center;padding:2rem;font-size:1.2rem;color:var(--muted)}
+  @media (orientation:portrait){#pad.on ~ #rotate{display:flex}}
+</style>
+</head>
+<body>
+
+<div id="join" class="screen on">
+  <h1>Fafi 27</h1>
+  <p id="joinMsg">Oda kodunu yaz ya da tahtadaki QR kodu okut.</p>
+  <input id="code" maxlength="4" autocomplete="off" placeholder="KOD">
+  <button id="joinBtn" class="primary">Bağlan</button>
+</div>
+
+<div id="wait" class="screen">
+  <h1 id="waitTitle">Bağlanılıyor</h1>
+  <p id="waitMsg"></p>
+</div>
+
+<div id="pick" class="screen">
+  <h1>Takımını seç</h1>
+  <div class="cards" id="cards"></div>
+  <p id="pickMsg"></p>
+</div>
+
+<div id="pad">
+  <div id="teamStrip"></div>
+  <div id="teamName"></div>
+  <div id="left"><div id="base"><div id="knob"></div></div><div id="hint">HAREKET</div></div>
+  <div id="right">
+    <button class="btn" id="bShoot" type="button" aria-label="Şut çek, basılı tutarak güç biriktir">ŞUT<div id="charge"><div id="chargeFill"></div></div></button>
+    <button class="btn" id="bPass" type="button" aria-label="Pas ver">PAS</button>
+    <button class="btn" id="bSwitch" type="button" aria-label="Kontrol edilen oyuncuyu değiştir">DEĞİŞ</button>
+    <button class="btn" id="bSprint" type="button" aria-label="Koşmayı aç veya kapat" aria-pressed="false">KOŞ</button>
+    <button class="btn" id="bPressure" type="button" aria-label="Basılı tutarak topa baskı yap">BASKI</button>
+  </div>
+</div>
+<div id="rotate">Telefonu yatay çevir</div>
+
+<div id="end" class="screen">
+  <h1 id="endTitle"></h1>
+  <p id="endScore"></p>
+  <button id="again" class="primary">Tekrar oyna</button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="config.js"></script>
+<script src="js/controller.js"></script>
+</body>
+</html>

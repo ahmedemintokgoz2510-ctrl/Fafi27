@@ -1,0 +1,147 @@
+// Fafi 27 - telefon (gamepad) tarafı
+(function () {
+  'use strict';
+  const CFG = window.FAFI, $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  let room = (params.get('room') || '').toUpperCase(), slot = null, myTeam = null, phase = 'join', sprintEnabled = false;
+  const socket = io({ transports: ['websocket', 'polling'] });
+
+  function show(id) {
+    ['join', 'wait', 'pick', 'end'].forEach((s) => $(s).classList.toggle('on', s === id));
+    $('pad').classList.toggle('on', id === 'pad');
+  }
+  function wait(title, msg) { $('waitTitle').textContent = title; $('waitMsg').textContent = msg || ''; show('wait'); }
+
+  // ---------- bağlanma ----------
+  function join() {
+    if (!room) return show('join');
+    wait('Bağlanılıyor');
+    socket.emit('ctrl:join', { code: room }, (r) => {
+      if (!r || !r.ok) { $('joinMsg').textContent = (r && r.error) || 'Bağlanılamadı'; room = ''; return show('join'); }
+      slot = r.slot; wait('Bağlandı', 'Oyuncu ' + (slot + 1) + ' olarak katıldın. Tahtadan devam ediliyor.');
+    });
+  }
+  socket.on('connect', () => { if (room) join(); });
+  $('joinBtn').onclick = () => { room = $('code').value.trim().toUpperCase(); join(); };
+  if (!room) show('join');
+
+  // ---------- takım seçimi ----------
+  function drawCards(taken) {
+    const box = $('cards'); box.innerHTML = '';
+    CFG.teams.forEach((t, i) => {
+      const c = document.createElement('div');
+      const lost = taken && taken[1 - slot] === i;
+      c.className = 'card' + (myTeam === i ? ' mine' : '') + (lost ? ' taken' : '');
+      c.innerHTML = (t.logo ? '<img src="' + t.logo + '" alt="">' : '<div class="sw" style="background:' + t.color + '"></div>') + '<b>' + t.name + '</b>';
+      c.onclick = () => { if (!lost) { $('pickMsg').textContent = ''; socket.emit('c2h', { t: 'pick', team: i }); } };
+      box.appendChild(c);
+    });
+    $('pickMsg').textContent = myTeam !== null ? 'Rakibin seçimi bekleniyor' : '';
+  }
+
+  // ---------- tahtadan gelen mesajlar ----------
+  socket.on('h2c', (m) => {
+    if (m.t === 'phase') {
+      phase = m.phase; myTeam = m.team === undefined ? null : m.team;
+      if (m.phase === 'pick') { show('pick'); drawCards(m.taken); }
+      else if (m.phase === 'play') openPad();
+      else if (m.phase === 'end') {
+        const [a, b] = m.score || [0, 0];
+        $('endTitle').textContent = a === b ? 'Berabere' : (a > b ? 0 : 1) === myTeam ? 'Kazandın' : 'Kaybettin';
+        $('endScore').textContent = CFG.teams[0].name + ' ' + a + ' - ' + b + ' ' + CFG.teams[1].name;
+        show('end');
+      }
+    } else if (m.t === 'taken') {
+      if (phase === 'pick') { myTeam = m.taken[slot]; drawCards(m.taken); }
+    } else if (m.t === 'pickFail') { $('pickMsg').textContent = 'Bu takım seçildi, diğerini seç'; }
+    else if (m.t === 'vib' && navigator.vibrate) navigator.vibrate(m.ms);
+    else if (m.t === 'hostLeft') { phase = 'join'; wait('Bağlantı koptu', 'Tahtadaki oyun kapandı. QR kodu yeniden okut.'); }
+  });
+  $('again').onclick = () => socket.emit('c2h', { t: 'rematch' });
+
+  // ---------- gamepad ----------
+  function openPad() {
+    const t = CFG.teams[myTeam] || CFG.teams[0];
+    document.documentElement.style.setProperty('--team', t.color);
+    $('teamName').textContent = t.name;
+    setSprintState(false, false);
+    show('pad');
+    try { if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}
+  }
+
+  function setSprintState(enabled, notify) {
+    sprintEnabled = enabled;
+    $('bSprint').classList.toggle('active', enabled);
+    $('bSprint').setAttribute('aria-pressed', String(enabled));
+    if (notify) socket.emit('c2h', { t: 'btn', b: 'sprint', d: enabled });
+  }
+
+  const R = 60, left = $('left'), base = $('base'), knob = $('knob');
+  let stickId = null, ox = 0, oy = 0, vx = 0, vy = 0, sx = 0, sy = 0;
+  left.addEventListener('pointerdown', (e) => {
+    if (stickId !== null) return;
+    stickId = e.pointerId; left.setPointerCapture(stickId);
+    const r = left.getBoundingClientRect(); ox = e.clientX - r.left; oy = e.clientY - r.top;
+    base.style.left = ox + 'px'; base.style.top = oy + 'px'; base.style.bottom = 'auto'; base.style.margin = '-75px 0 0 -75px'; base.classList.add('active'); $('hint').style.display = 'none';
+    move(e);
+  });
+  left.addEventListener('pointermove', (e) => { if (e.pointerId === stickId) move(e); });
+  const endStick = (e) => {
+    if (e.pointerId !== stickId) return;
+    stickId = null; vx = vy = 0; base.classList.remove('active');
+    base.style.removeProperty('left'); base.style.removeProperty('top'); base.style.removeProperty('bottom'); base.style.removeProperty('margin');
+    knob.style.transform = ''; $('hint').style.display = '';
+    sx = sy = 0; socket.emit('c2h', { t: 'mv', x: 0, y: 0 });
+  };
+  left.addEventListener('pointerup', endStick); left.addEventListener('pointercancel', endStick);
+  function move(e) {
+    const r = left.getBoundingClientRect();
+    let dx = e.clientX - r.left - ox, dy = e.clientY - r.top - oy;
+    const d = Math.hypot(dx, dy); if (d > R) { dx = dx / d * R; dy = dy / d * R; }
+    vx = dx / R; vy = dy / R; knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+  }
+  setInterval(() => {
+    if (phase !== 'play' || stickId === null) return;
+    if (Math.abs(vx - sx) > 0.02 || Math.abs(vy - sy) > 0.02) {
+      sx = vx; sy = vy; socket.volatile.emit('c2h', { t: 'mv', x: +vx.toFixed(2), y: +vy.toFixed(2) });
+    }
+  }, 33);
+
+  // tuşlar
+  let chargeT0 = 0, chargeRaf = 0;
+  function chargeLoop() {
+    $('chargeFill').style.width = Math.min(1, (performance.now() - chargeT0) / 900) * 100 + '%';
+    chargeRaf = requestAnimationFrame(chargeLoop);
+  }
+  function bindBtn(id, name) {
+    const el = $(id); let pid = null;
+    el.addEventListener('pointerdown', (e) => {
+      if (pid !== null) return; pid = e.pointerId; el.setPointerCapture(pid); el.classList.add('on');
+      socket.emit('c2h', { t: 'btn', b: name, d: true });
+      if (navigator.vibrate) navigator.vibrate(12);
+      if (name === 'shoot') { chargeT0 = performance.now(); chargeLoop(); }
+    });
+    const up = (e) => {
+      if (e.pointerId !== pid) return; pid = null; el.classList.remove('on');
+      socket.emit('c2h', { t: 'btn', b: name, d: false });
+      if (name === 'shoot') { cancelAnimationFrame(chargeRaf); $('chargeFill').style.width = '0'; }
+    };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+  }
+  bindBtn('bShoot', 'shoot'); bindBtn('bPass', 'pass'); bindBtn('bSwitch', 'switch');
+  bindBtn('bPressure', 'pressure');
+
+  const sprintButton = $('bSprint'); let sprintPointer = null;
+  sprintButton.addEventListener('pointerdown', (e) => {
+    if (sprintPointer !== null) return;
+    sprintPointer = e.pointerId; sprintButton.setPointerCapture(sprintPointer);
+    setSprintState(!sprintEnabled, true);
+    if (navigator.vibrate) navigator.vibrate(12);
+  });
+  const releaseSprint = (e) => { if (e.pointerId === sprintPointer) sprintPointer = null; };
+  sprintButton.addEventListener('pointerup', releaseSprint);
+  sprintButton.addEventListener('pointercancel', releaseSprint);
+
+  document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
+})();

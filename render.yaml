@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: fafi-27
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production

@@ -1,0 +1,10 @@
+{
+  "name": "fafi-27",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fafi 27 - akıllı tahta + telefon gamepad futbol oyunu",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "express": "^4.19.2", "socket.io": "^4.7.5" },
+  "engines": { "node": ">=18" }
+}
