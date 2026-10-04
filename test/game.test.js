@@ -257,3 +257,26 @@ test('an idle controlled player turns toward the ball instead of keeping its bac
 
   assert.ok(Math.cos(player.face) > before);
 });
+
+test('CPU corner and throw-in restarts are played instead of freezing the match', () => {
+  const originalRandom = Math.random;
+  try {
+    Math.random = () => 0.99;
+    for (const restart of ['corner', 'throwin']) {
+      const events = [];
+      const game = createGame(cfg, (type) => events.push(type));
+      game.start(3, [false, false]);
+      game.state = 'play';
+      if (restart === 'corner') game.awardCorner(0, 1, 1);
+      else game.awardThrowIn(0, 0, game.HW);
+
+      for (let i = 0; i < 4; i++) game.update(0.05);
+
+      assert.equal(game.state, 'play', `${restart} should resume for CPU control`);
+      assert.equal(game.ball.owner, null);
+      assert.ok(events.includes('restartEnd'));
+    }
+  } finally {
+    Math.random = originalRandom;
+  }
+});

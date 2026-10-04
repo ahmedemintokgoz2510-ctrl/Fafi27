@@ -63,7 +63,7 @@
       taker.face = face; taker.x = x - Math.cos(face) * 1.2; taker.z = z - Math.sin(face) * 1.2; taker.vx = 0; taker.vz = 0;
       taker.protect = 0.9; taker.noGrab = 0.8; B.owner = taker; B.target = null; B.x = x; B.y = kind === 'throwin' ? 1.8 : 0.48; B.z = z; B.vx = 0; B.vy = 0; B.vz = 0; B.spin = 0; B.offside = false; B.ownT = 0; B.last = team;
       G.ctrl[team] = taker;
-      G.state = kind; G.stateT = 1.6; emit(eventType, { team, player: taker.number, x, z });
+      G.state = kind; G.stateT = kind === 'corner' || kind === 'throwin' ? 8 : 1.6; emit(eventType, { team, player: taker.number, x, z });
     }
 
     G.awardPenalty = function (team, player) {
@@ -219,7 +219,9 @@
           const p = G.ctrl[t];
           if (p && B.owner === p) {
             const power = clamp(Number(options.hold) || 0, 0, 1.2) / 1.2;
-            doPass(p, inp.x, inp.z, false, power, true);
+            let aimX = inp.x, aimZ = inp.z;
+            if (G.state === 'throwin') aimZ = (B.z > 0 ? -1 : 1) * (Math.abs(aimZ) + 0.25);
+            doPass(p, aimX, aimZ, false, power, true);
             B.offside = false;
             G.state = 'play'; emit('restartEnd');
           }
@@ -574,6 +576,14 @@
       }
       if (G.state === 'corner' || G.state === 'throwin') {
         G.players.forEach((p) => { p.vx = p.vz = 0; });
+        G.stateT -= dt;
+        const taker = B.owner;
+        if (taker && (!G.human[taker.team] || G.stateT <= 0)) {
+          const aimX = G.state === 'corner' ? taker.dir * (HL - 8) - taker.x : taker.dir;
+          const aimZ = G.state === 'corner' ? -taker.z : (B.z > 0 ? -0.45 : 0.45);
+          doPass(taker, aimX, aimZ, false, 0.45, true);
+          B.offside = false; G.state = 'play'; emit('restartEnd');
+        }
         return;
       }
       if (G.state === 'goal') {
