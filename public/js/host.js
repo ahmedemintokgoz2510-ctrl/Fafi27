@@ -104,7 +104,7 @@
   // Keep player geometry articulated so movement is visible at board scale.
   const mats = {};
   const mat = (c) => mats[c] || (mats[c] = new THREE.MeshLambertMaterial({ color: c }));
-  const shadowGeo = new THREE.CircleGeometry(0.62, 16), shadowMat = new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.25 });
+  const shadowGeo = new THREE.CircleGeometry(0.72, 20), shadowMat = new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.26 });
   function makePlayerMesh(team, player) {
     const t = CFG.teams[team], g = new THREE.Group(), body = new THREE.Group();
     const role = player.role;
@@ -112,41 +112,54 @@
     const kit = role === 'GK' ? '#d4ae48' : t.color;
     const skin = ['#d9a884', '#b77e5d', '#8b5e46', '#e2bd9c'][player.idx % 4];
     const shortsColor = role === 'GK' ? '#273442' : (t.shortsColor || t.color);
-    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.34, 1.0, 12), mat(kit)); torso.position.y = 1.36; body.add(torso);
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.035, 6, 12), mat(t.color2)); collar.position.set(0.015, 1.84, 0); collar.rotation.y = Math.PI / 2; body.add(collar);
-    const shorts = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.31, 0.42, 10), mat(shortsColor)); shorts.position.y = 0.65; body.add(shorts);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 10), mat(skin)); head.position.y = 2.08; body.add(head);
+    const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.9, metalness: 0.03 });
+    const kitMat = new THREE.MeshStandardMaterial({ color: kit, roughness: 0.78, metalness: 0.12 });
+    const shortMat = new THREE.MeshStandardMaterial({ color: shortsColor, roughness: 0.85, metalness: 0.1 });
+    const trimMat = new THREE.MeshStandardMaterial({ color: t.color2, roughness: 0.7, metalness: 0.18 });
+    const bootMat = new THREE.MeshStandardMaterial({ color: '#1f2428', roughness: 0.68, metalness: 0.22 });
     const hairColors = ['#302a27', '#211d1b', '#5a3c2d', '#382c25'];
-    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.265, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.48), mat(hairColors[player.idx % hairColors.length]));
-    hair.position.y = 2.12; body.add(hair);
+    const hairColor = hairColors[player.idx % hairColors.length];
+
+    const pelvis = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.31, 0.42, 12), shortMat); pelvis.position.y = 0.78; body.add(pelvis);
+    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 1.06, 7, 12), kitMat); torso.position.y = 1.56; body.add(torso);
+    const waist = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.29, 0.27, 10), kitMat); waist.position.y = 1.0; body.add(waist);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.22, 10), skinMat); neck.position.y = 2.35; body.add(neck);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.27, 24, 20), skinMat); head.position.y = 2.76; body.add(head);
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.29, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.62), new THREE.MeshStandardMaterial({ color: hairColor, roughness: 0.9, metalness: 0.05 }));
+    hair.position.y = 2.93; body.add(hair);
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.03, 0.02), new THREE.MeshStandardMaterial({ color: '#1e1a18', roughness: 0.9 }));
+    brow.position.set(0, 2.8, 0.23); body.add(brow);
     [-1, 1].forEach((side) => {
-      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), mat(skin)); ear.position.set(0, 2.06, side * 0.245); body.add(ear);
-      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), mat('#25201e')); eye.position.set(0.218, 2.095, side * 0.09); eye.scale.set(0.45, 1, 0.75); body.add(eye);
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), skinMat); ear.position.set(0, 2.74, side * 0.25); body.add(ear);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.047, 10, 8), new THREE.MeshStandardMaterial({ color: '#1a1d1d', roughness: 0.7, metalness: 0.2 }));
+      eye.position.set(side * 0.12, 2.78, 0.21); eye.scale.set(0.55, 0.8, 0.7); body.add(eye);
+      const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), new THREE.MeshStandardMaterial({ color: '#d9a884', roughness: 1, metalness: 0 }));
+      cheek.position.set(side * 0.18, 2.64, 0.18); cheek.scale.set(0.7, 0.7, 0.7); body.add(cheek);
     });
-    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), mat(skin)); nose.position.set(0.255, 2.015, 0); nose.scale.set(0.7, 0.7, 0.7); body.add(nose);
-    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.025, 0.09), mat('#70493a')); mouth.position.set(0.237, 1.96, 0); body.add(mouth);
-    const stripes = [];
-    [-0.14, 0, 0.14].forEach((z) => {
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.68, 0.075), mat(t.color2));
-      stripe.position.set(0.378, 1.36, z); body.add(stripe); stripes.push(stripe);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.2, 10), skinMat); nose.rotation.x = Math.PI / 2; nose.position.set(0, 2.64, 0.25); body.add(nose);
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.025, 0.02), new THREE.MeshStandardMaterial({ color: '#6d483f', roughness: 0.8 })); mouth.position.set(0, 2.54, 0.24); body.add(mouth);
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.03, 8, 18), trimMat); collar.position.set(0.02, 2.03, 0); collar.rotation.y = Math.PI / 2; body.add(collar);
+    [-0.16, 0, 0.16].forEach((z) => {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.72, 0.08), trimMat);
+      stripe.position.set(0.26, 1.55, z); body.add(stripe);
     });
+
     const legs = [], arms = [], lowerLegs = [];
     [-1, 1].forEach((side) => {
-      const leg = new THREE.Group(); leg.position.set(0, 0.49, side * 0.17); body.add(leg);
-      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.13, 0.48, 8), mat(role === 'GK' ? '#273442' : t.color));
-      thigh.position.y = -0.23; leg.add(thigh);
-      const knee = new THREE.Mesh(new THREE.SphereGeometry(0.105, 8, 6), mat(skin)); knee.position.y = -0.47; leg.add(knee);
-      const shin = new THREE.Group(); shin.position.y = -0.48; leg.add(shin);
-      const calf = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.09, 0.4, 8), mat(skin)); calf.position.y = -0.19; shin.add(calf);
-      const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.078, 0.16, 8), mat(t.color2)); sock.position.y = -0.37; shin.add(sock);
-      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.14, 0.17), mat('#202327')); boot.position.set(0.1, -0.455, 0); shin.add(boot);
+      const leg = new THREE.Group(); leg.position.set(side * 0.17, 0.48, 0); body.add(leg);
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.52, 10), role === 'GK' ? shortMat : kitMat); thigh.position.y = -0.25; leg.add(thigh);
+      const knee = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), skinMat); knee.position.y = -0.52; leg.add(knee);
+      const shin = new THREE.Group(); shin.position.y = -0.54; leg.add(shin);
+      const calf = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.09, 0.44, 10), skinMat); calf.position.y = -0.2; shin.add(calf);
+      const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.18, 10), trimMat); sock.position.y = -0.38; shin.add(sock);
+      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.18), bootMat); boot.position.set(0.08, -0.47, 0); shin.add(boot);
       legs.push(leg); lowerLegs.push(shin);
 
-      const arm = new THREE.Group(); arm.position.set(0, 1.68, side * 0.39); body.add(arm);
-      const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.12, 0.48, 8), mat(kit)); upperArm.position.y = -0.22; arm.add(upperArm);
-      const forearm = new THREE.Group(); forearm.position.y = -0.43; arm.add(forearm);
-      const forearmMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.09, 0.4, 8), mat(skin)); forearmMesh.position.y = -0.19; forearm.add(forearmMesh);
-      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), mat(skin)); hand.position.y = -0.4; forearm.add(hand);
+      const arm = new THREE.Group(); arm.position.set(side * 0.48, 1.8, 0); body.add(arm);
+      const upperArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.44, 4, 10), kitMat); upperArm.position.y = -0.22; arm.add(upperArm);
+      const forearm = new THREE.Group(); forearm.position.y = -0.5; arm.add(forearm);
+      const forearmMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.38, 4, 10), skinMat); forearmMesh.position.y = -0.2; forearm.add(forearmMesh);
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), skinMat); hand.position.y = -0.43; forearm.add(hand);
       arms.push(arm);
     });
     g.add(body); g.userData.body = body;
@@ -160,7 +173,7 @@
     const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, depthTest: false }));
     label.position.y = 3.25; label.scale.set(5.2, 0.98, 1); label.visible = false; g.add(label);
     g.userData.nameLabel = label;
-    const sh = new THREE.Mesh(shadowGeo, shadowMat); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.03; g.add(sh);
+    const sh = new THREE.Mesh(shadowGeo, shadowMat); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.04; g.add(sh);
     scene.add(g); return g;
   }
   const meshes = game.players.map((p) => makePlayerMesh(p.team, p));
@@ -176,14 +189,19 @@
     meshes.forEach((mesh, i) => {
       const player = game.players[i], team = CFG.teams[player.team];
       const actor = THREE.SkeletonUtils.clone(gltf.scene);
-      actor.scale.setScalar(scale); actor.rotation.y = Math.PI / 2;
+      actor.scale.setScalar(scale * 1.05); actor.rotation.y = Math.PI / 2;
       actor.position.set(-sourceCenter.x * scale, -sourceBounds.min.y * scale, -sourceCenter.z * scale);
       actor.traverse((object) => {
         if (!object.isSkinnedMesh) return;
         object.frustumCulled = false;
-        object.material = object.material.clone();
-        object.material.color.set(['#d8ad90', '#bd896a', '#986c53', '#e0bc9c'][player.idx % 4]);
-        object.material.roughness = 0.92; object.material.metalness = 0;
+        const material = object.material && object.material.clone ? object.material.clone() : object.material;
+        if (material && material.color) {
+          material.color.set(['#d8ad90', '#bd896a', '#986c53', '#e0bc9c'][player.idx % 4]);
+          material.roughness = 0.88;
+          material.metalness = 0.03;
+          material.clearcoat = 0.12;
+        }
+        object.material = material;
       });
 
       const spine = actor.getObjectByName('Spine1'), hips = actor.getObjectByName('Hips'), head = actor.getObjectByName('Head');
