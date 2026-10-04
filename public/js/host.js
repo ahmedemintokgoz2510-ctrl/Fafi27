@@ -47,10 +47,10 @@
   stage.appendChild(renderer.domElement);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#0f1a14');
-  scene.fog = new THREE.Fog('#0f1a14', 90, 190);
-  const cam = new THREE.PerspectiveCamera(42, 1, 0.5, 400);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x2a3a2e, 0.85));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.55); sun.position.set(-20, 60, 30); scene.add(sun);
+  scene.fog = new THREE.Fog('#0f1a14', 150, 260);
+  const cam = new THREE.PerspectiveCamera(58, 1, 0.5, 400);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x2a3a2e, 1.05));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(-20, 60, 30); scene.add(sun);
 
   function pitchTexture() {
     const S = 10, c = document.createElement('canvas'); c.width = L * S; c.height = W * S;
@@ -75,54 +75,16 @@
   pitch.rotation.x = -Math.PI / 2; scene.add(pitch);
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 300), new THREE.MeshLambertMaterial({ color: '#1b3324' }));
   ground.rotation.x = -Math.PI / 2; ground.position.y = -0.05; scene.add(ground);
-
-  const assetLoader = new THREE.GLTFLoader();
-  assetLoader.load('assets/models/soccer-field.glb', (gltf) => {
-    const field = gltf.scene, sx = L / 1.4, sz = W / 0.67;
-    field.scale.set(sx, 1, sz);
-    field.position.set(-0.0106868 * sx, 0.05, -0.01438485 * sz);
-    field.traverse((o) => { if (o.isMesh && o.material.name === 'mat9') o.material.color.set('#2c663c'); });
-    scene.add(field); pitch.visible = false;
-  });
-  assetLoader.load('assets/models/football-stadium.glb', (gltf) => {
-    gltf.scene.traverse((o) => {
-      if (!o.isMesh) return;
-      const materials = Array.isArray(o.material) ? o.material : [o.material];
-      if (materials.some((m) => ['20690a', '052b00', '959595', '203256', '040404', '000000'].includes(m.color && m.color.getHexString()))) o.visible = false;
+  const seatColors = ['#263644', '#344857', '#3f4d58', '#594743'].map((color) => new THREE.MeshLambertMaterial({ color }));
+  for (let row = 0; row < 7; row++) {
+    const height = 0.52, y = 0.42 + row * 0.62, offset = 3.8 + row * 1.65, material = seatColors[row % seatColors.length];
+    [-1, 1].forEach((side) => {
+      const longStand = new THREE.Mesh(new THREE.BoxGeometry(L + 18, height, 1.45), material);
+      longStand.position.set(0, y, side * (W / 2 + offset)); scene.add(longStand);
+      const endStand = new THREE.Mesh(new THREE.BoxGeometry(1.45, height, W + 18), material);
+      endStand.position.set(side * (L / 2 + offset), y, 0); scene.add(endStand);
     });
-    const stadium = new THREE.Group();
-    gltf.scene.rotation.y = Math.PI / 2; gltf.scene.scale.setScalar(1.15); stadium.add(gltf.scene);
-    stadium.updateMatrixWorld(true);
-    stadium.traverse((o) => {
-      if (!o.isMesh || !o.visible) return;
-      const geometry = o.geometry, position = geometry.attributes.position, index = geometry.index;
-      const attributes = geometry.attributes, kept = Object.fromEntries(Object.keys(attributes).map((key) => [key, []]));
-      const vertexCount = index ? index.count : position.count, point = new THREE.Vector3();
-      for (let i = 0; i < vertexCount; i += 3) {
-        let x = 0, z = 0;
-        for (let j = 0; j < 3; j++) {
-          const vertex = index ? index.getX(i + j) : i + j;
-          point.fromBufferAttribute(position, vertex).applyMatrix4(o.matrixWorld); x += point.x / 3; z += point.z / 3;
-        }
-        if (Math.abs(x) <= L / 2 + 5 && Math.abs(z) <= W / 2 + 5) continue;
-        for (let j = 0; j < 3; j++) {
-          const vertex = index ? index.getX(i + j) : i + j;
-          Object.keys(attributes).forEach((key) => {
-            const attribute = attributes[key], start = vertex * attribute.itemSize;
-            kept[key].push(...attribute.array.slice(start, start + attribute.itemSize));
-          });
-        }
-      }
-      const trimmed = new THREE.BufferGeometry();
-      Object.keys(attributes).forEach((key) => {
-        const attribute = attributes[key];
-        trimmed.setAttribute(key, new THREE.BufferAttribute(new attribute.array.constructor(kept[key]), attribute.itemSize, attribute.normalized));
-      });
-      trimmed.computeBoundingSphere(); geometry.dispose(); o.geometry = trimmed;
-    });
-    const bounds = new THREE.Box3().setFromObject(stadium), center = bounds.getCenter(new THREE.Vector3());
-    stadium.position.set(-center.x, -bounds.min.y, -center.z); scene.add(stadium);
-  });
+  }
 
   const white = new THREE.MeshLambertMaterial({ color: '#f1eee6' });
   const netMat = new THREE.MeshBasicMaterial({ color: '#f1eee6', transparent: true, opacity: 0.18, side: THREE.DoubleSide });
@@ -139,19 +101,47 @@
     b.position.set(0, 0.5, s * (W / 2 + 2.2)); scene.add(b);
   });
 
-  // oyuncu görseli: ileride 3D model koymak için sadece bu fonksiyonu değiştir
+  // Keep player geometry articulated so movement is visible at board scale.
   const mats = {};
   const mat = (c) => mats[c] || (mats[c] = new THREE.MeshLambertMaterial({ color: c }));
-  const shadowGeo = new THREE.CircleGeometry(0.8, 16), shadowMat = new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.28 });
+  const shadowGeo = new THREE.CircleGeometry(0.62, 16), shadowMat = new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.25 });
   function makePlayerMesh(team, player) {
-    const t = CFG.teams[team], g = new THREE.Group(), body = new THREE.Group(), fallback = new THREE.Group();
+    const t = CFG.teams[team], g = new THREE.Group(), body = new THREE.Group();
     const role = player.role;
-    const kit = role === 'GK' ? '#c4b25c' : t.color;
-    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.42, 1.5, 12), mat(kit)); torso.position.y = 1.0; fallback.add(torso);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.36, 12, 10), mat('#d4aa88')); head.position.y = 2.0; fallback.add(head);
-    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.6), mat(t.color2)); chest.position.set(0.45, 1.25, 0); fallback.add(chest);
-    body.add(fallback);
+    g.scale.setScalar(1.18);
+    const kit = role === 'GK' ? '#d4ae48' : t.color;
+    const skin = ['#d9a884', '#b77e5d', '#8b5e46', '#e2bd9c'][player.idx % 4];
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.39, 0.34, 1.0, 10), mat(kit)); torso.position.y = 1.36; body.add(torso);
+    const shorts = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.31, 0.42, 10), mat(role === 'GK' ? '#273442' : t.color)); shorts.position.y = 0.65; body.add(shorts);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 10), mat(skin)); head.position.y = 2.08; body.add(head);
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.265, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.48), mat('#302a27'));
+    hair.position.y = 2.12; body.add(hair);
+    const stripes = [];
+    [-0.14, 0, 0.14].forEach((z) => {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.68, 0.075), mat(t.color2));
+      stripe.position.set(0.378, 1.36, z); body.add(stripe); stripes.push(stripe);
+    });
+    const legs = [], arms = [], lowerLegs = [];
+    [-1, 1].forEach((side) => {
+      const leg = new THREE.Group(); leg.position.set(0, 0.49, side * 0.17); body.add(leg);
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.13, 0.48, 8), mat(role === 'GK' ? '#273442' : t.color));
+      thigh.position.y = -0.23; leg.add(thigh);
+      const knee = new THREE.Mesh(new THREE.SphereGeometry(0.105, 8, 6), mat(skin)); knee.position.y = -0.47; leg.add(knee);
+      const shin = new THREE.Group(); shin.position.y = -0.48; leg.add(shin);
+      const calf = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.09, 0.4, 8), mat(skin)); calf.position.y = -0.19; shin.add(calf);
+      const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.078, 0.078, 0.16, 8), mat(t.color2)); sock.position.y = -0.37; shin.add(sock);
+      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.14, 0.17), mat('#202327')); boot.position.set(0.1, -0.455, 0); shin.add(boot);
+      legs.push(leg); lowerLegs.push(shin);
+
+      const arm = new THREE.Group(); arm.position.set(0, 1.68, side * 0.39); body.add(arm);
+      const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.12, 0.48, 8), mat(kit)); upperArm.position.y = -0.22; arm.add(upperArm);
+      const forearm = new THREE.Group(); forearm.position.y = -0.43; arm.add(forearm);
+      const forearmMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.072, 0.09, 0.4, 8), mat(skin)); forearmMesh.position.y = -0.19; forearm.add(forearmMesh);
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), mat(skin)); hand.position.y = -0.4; forearm.add(hand);
+      arms.push(arm);
+    });
     g.add(body); g.userData.body = body;
+    g.userData.limbs = { legs, arms, lowerLegs };
     const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 96;
     const ctx = canvas.getContext('2d');
     ctx.fillStyle = 'rgba(12,20,15,.88)'; ctx.fillRect(4, 4, 504, 88);
@@ -165,28 +155,24 @@
     scene.add(g); return g;
   }
   const meshes = game.players.map((p) => makePlayerMesh(p.team, p));
-  assetLoader.load('assets/models/footballer.glb', (gltf) => {
-    const template = gltf.scene, bounds = new THREE.Box3().setFromObject(template);
-    const height = bounds.getSize(new THREE.Vector3()).y, scale = 2.25 / height;
-    meshes.forEach((mesh, i) => {
-      const player = game.players[i], actor = template.clone(true), team = CFG.teams[player.team];
-      actor.scale.setScalar(scale); actor.position.y = height * scale / 2; actor.rotation.y = Math.PI / 2;
-      actor.traverse((o) => {
-        if (!o.isMesh) return;
-        o.material = o.material.clone();
-        if (o.material.name === 'mat16') o.material.color.set(player.role === 'GK' ? '#c4b25c' : team.color);
-      });
-      mesh.userData.body.children[0].visible = false;
-      mesh.userData.body.add(actor);
-    });
-  });
   const rings = [0, 1].map(() => {
     const r = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.2, 28), new THREE.MeshBasicMaterial({ color: '#ece8dc', transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
     r.rotation.x = -Math.PI / 2; r.position.y = 0.06; r.visible = false; scene.add(r); return r;
   });
-  const ballMesh = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 1), new THREE.MeshLambertMaterial({ color: '#f4f2ea' }));
+  const ballMesh = new THREE.Group(), ballRadius = 0.48;
+  ballMesh.add(new THREE.Mesh(new THREE.SphereGeometry(ballRadius, 20, 16), mat('#f4f2ea')));
+  const phi = (1 + Math.sqrt(5)) / 2;
+  const panelDirections = [[-1, phi, 0], [1, phi, 0], [-1, -phi, 0], [1, -phi, 0], [0, -1, phi], [0, 1, phi], [0, -1, -phi], [0, 1, -phi], [phi, 0, -1], [phi, 0, 1], [-phi, 0, -1], [-phi, 0, 1]];
+  panelDirections.forEach((values) => {
+    const direction = new THREE.Vector3(...values).normalize();
+    const panel = new THREE.Mesh(new THREE.CircleGeometry(0.15, 5), mat('#202327'));
+    panel.position.copy(direction).multiplyScalar(ballRadius + 0.006);
+    panel.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction); ballMesh.add(panel);
+  });
   scene.add(ballMesh);
-  const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.5, 14), shadowMat); ballShadow.rotation.x = -Math.PI / 2; ballShadow.position.y = 0.03; scene.add(ballShadow);
+  const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.52, 18), shadowMat); ballShadow.rotation.x = -Math.PI / 2; ballShadow.position.y = 0.03; scene.add(ballShadow);
+  const ballMarker = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.98, 32), new THREE.MeshBasicMaterial({ color: '#ffd34f', transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+  ballMarker.rotation.x = -Math.PI / 2; ballMarker.position.y = 0.045; scene.add(ballMarker);
 
   function resize() {
     const w = innerWidth, h = innerHeight; renderer.setSize(w, h); cam.aspect = w / h; cam.updateProjectionMatrix();
@@ -200,22 +186,29 @@
     game.players.forEach((p, i) => {
       const m = meshes[i], sp = Math.hypot(p.vx, p.vz);
       m.position.set(p.x, 0, p.z); m.rotation.y = -p.face;
-      m.userData.body.position.y = Math.abs(Math.sin(tAnim * 11 + i)) * 0.14 * Math.min(1, sp / 8);
+      const run = Math.min(1, sp / 4), stride = Math.sin(tAnim * 13 + i * 0.8) * run;
+      const limbs = m.userData.limbs;
+      limbs.legs[0].rotation.z = stride * 0.62; limbs.legs[1].rotation.z = -stride * 0.62;
+      limbs.lowerLegs[0].rotation.z = Math.max(0, -stride) * 0.9; limbs.lowerLegs[1].rotation.z = Math.max(0, stride) * 0.9;
+      limbs.arms[0].rotation.z = -stride * 0.48; limbs.arms[1].rotation.z = stride * 0.48;
+      m.userData.body.rotation.z = -0.06 * run;
       m.userData.nameLabel.visible = playing && game.human[p.team] && game.ctrl[p.team] === p;
     });
     rings.forEach((r, t) => {
       const c = playing && game.human[t] ? game.ctrl[t] : null;
       r.visible = !!c; if (c) r.position.set(c.x, 0.06, c.z);
     });
-    ballMesh.position.set(B.x, 0.5, B.z); ballMesh.rotation.z -= B.vx * dt / 0.5; ballMesh.rotation.x += B.vz * dt / 0.5;
+    ballMesh.position.set(B.x, ballRadius, B.z); ballMesh.rotation.z -= B.vx * dt / ballRadius; ballMesh.rotation.x += B.vz * dt / ballRadius;
     ballShadow.position.x = B.x; ballShadow.position.z = B.z;
     if (!playing || phase === 'end') {
       orbit += dt * 0.1;
-      cam.position.set(Math.sin(orbit) * 44, 30, 54 + Math.cos(orbit) * 6); cam.lookAt(0, 0, 4);
+      cam.position.set(Math.sin(orbit) * 36, 58, 52 + Math.cos(orbit) * 4); cam.lookAt(0, 0, 0);
     } else {
       camX += (clamp(B.x * 0.8, -20, 20) - camX) * Math.min(1, 2.5 * dt);
-      cam.position.set(camX, 46, 30); cam.lookAt(camX, 0, 2);
+      cam.position.set(camX, 54, 40); cam.lookAt(camX, 0, 0);
     }
+    ballMarker.position.x = B.x; ballMarker.position.z = B.z;
+    const markerPulse = 1 + Math.sin(tAnim * 5) * 0.06; ballMarker.scale.set(markerPulse, markerPulse, 1);
   }
 
   // ---------- HUD ----------
