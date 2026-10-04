@@ -24,7 +24,8 @@
         cfg.formation.forEach((f, i) => {
             const identity = (cfg.teams[t].players || [])[i] || {};
             const p = { team: t, idx: i, role: f.role, name: identity.name || 'Oyuncu ' + (i + 1), number: identity.number || i + 1, dir, hx: f.x * HL * dir, hz: f.z * HW * dir, x: 0, z: 0, vx: 0, vz: 0,
-            face: t === 0 ? 0 : Math.PI, noGrab: 0, protect: 0, bias: Math.random() * 1.5, shootCd: 0, kickT: 0, kickSide: i % 2, diveT: 0, diveSide: 1 };
+            face: t === 0 ? 0 : Math.PI, noGrab: 0, protect: 0, bias: Math.random() * 1.5, shootCd: 0, kickT: 0, kickSide: i % 2, diveT: 0, diveSide: 1,
+            slideT: 0, slideDuration: 0, slideCooldown: 0, slidePower: 0, slideX: 0, slideZ: 0, slideResolved: false };
           G.players.push(p); G.teams[t].push(p);
         });
       }
@@ -34,6 +35,7 @@
       G.players.forEach((p) => {
         p.x = p.hx; p.z = p.hz; p.vx = p.vz = 0; p.face = p.dir === 1 ? 0 : Math.PI;
         p.noGrab = p.team === kt ? 0 : 1.8; p.protect = 0; p.kickT = 0; p.diveT = 0;
+        p.slideT = 0; p.slideCooldown = 0; p.slideResolved = false;
       });
       const k = G.teams[kt][9];
       k.x = -k.dir * 0.95; k.z = 0; k.protect = 0.6;
@@ -127,6 +129,24 @@
       else if (btn === 'shoot') {
         if (down) { if (B.owner === p) inp.charge = 0; }
         else { if (inp.charge >= 0 && B.owner === p) doShoot(p, inp.charge, false, !!options.loft); inp.charge = -1; }
+      } else if (btn === 'slide') {
+        if (down || p.slideCooldown > 0 || p.slideT > 0 || B.owner === p) return;
+        let target = null, targetScore = 1e9;
+        for (const opponent of G.teams[1 - t]) {
+          const score = dist(p, opponent) - (B.owner === opponent ? 0.8 : 0);
+          if (score < targetScore) { target = opponent; targetScore = score; }
+        }
+        if (!target || dist(p, target) > 5.2 || dist(p, B) > 6.2) return;
+        const dx = (B.owner === target ? target.x : B.x) - p.x;
+        const dz = (B.owner === target ? target.z : B.z) - p.z;
+        const length = Math.hypot(dx, dz);
+        if (length < 0.01) return;
+        p.slidePower = clamp(Number(options.hold) || 0, 0, 1.2) / 1.2;
+        p.slideDuration = 0.34 + p.slidePower * 0.2;
+        p.slideT = p.slideDuration;
+        p.slideCooldown = 0.75 + p.slidePower * 0.8;
+        p.slideX = dx / length; p.slideZ = dz / length; p.slideResolved = false;
+        emit('slide', { team: t, power: p.slidePower });
       } else if (btn === 'switch' && down) {
         let best = null, bd = 1e9;
         for (const q of G.teams[t]) {
@@ -218,6 +238,13 @@
       moveTo(p, tx, tz, sp, dt);
     }
 
+    function slideStep(p, dt) {
+      const speed = (9 + p.slidePower * 9) * Math.max(0.3, p.slideT / p.slideDuration);
+      p.vx = p.slideX * speed; p.vz = p.slideZ * speed;
+      turn(p, Math.atan2(p.slideZ, p.slideX), dt, 24);
+      p.slideT = Math.max(0, p.slideT - dt);
+    }
+
     function updatePlayers(dt) {
       for (let t = 0; t < 2; t++) {
         G.autoLock[t] = Math.max(0, G.autoLock[t] - dt);
@@ -226,9 +253,30 @@
       }
       for (const p of G.players) {
         p.noGrab -= dt; p.protect -= dt; p.shootCd -= dt; p.kickT = Math.max(0, p.kickT - dt); p.diveT = Math.max(0, p.diveT - dt);
-        if (G.human[p.team] && G.ctrl[p.team] === p) humanStep(p, dt); else aiStep(p, dt);
+        p.slideCooldown = Math.max(0, p.slideCooldown - dt);
+        if (p.slideT > 0) slideStep(p, dt);
+        else if (G.human[p.team] && G.ctrl[p.team] === p) humanStep(p, dt); else aiStep(p, dt);
         p.x = clamp(p.x + p.vx * dt, -HL - 1.5, HL + 1.5);
         p.z = clamp(p.z + p.vz * dt, -HW - 1.5, HW + 1.5);
+      }
+      for (const tackler of G.players) {
+        if (tackler.slideT <= 0 || tackler.slideResolved) continue;
+        for (const opponent of G.teams[1 - tackler.team]) {
+          if (dist(tackler, opponent) > 1.6) continue;
+          tackler.slideResolved = true;
+          if (tackler.slidePower >= 0.8) {
+            const restartX = clamp(B.x, -HL + 2, HL - 2), restartZ = clamp(B.z, -HW + 2, HW - 2);
+            tackler.slideT = 0; tackler.vx = tackler.vz = 0;
+            placeRestart(opponent, restartX, restartZ, Math.atan2(tackler.z - opponent.z, tackler.x - opponent.x));
+            emit('foul', { team: opponent.team, player: opponent.number });
+          } else if (B.owner === opponent || dist(opponent, B) < 2.3) {
+            B.owner = null; B.x = opponent.x; B.y = 0.48; B.z = opponent.z;
+            B.vx = tackler.slideX * (8 + tackler.slidePower * 12); B.vy = 0.8; B.vz = tackler.slideZ * (8 + tackler.slidePower * 12);
+            B.ownT = 0; B.last = tackler.team; opponent.noGrab = 0.5; tackler.noGrab = 0.25;
+            emit('tackle', { team: tackler.team });
+          }
+          break;
+        }
       }
       for (let i = 0; i < G.players.length; i++) for (let j = i + 1; j < G.players.length; j++) {
         const a = G.players[i], b = G.players[j], d = dist(a, b);

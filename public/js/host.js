@@ -330,7 +330,8 @@
     const B = game.ball;
     game.players.forEach((p, i) => {
       const m = meshes[i], sp = Math.hypot(p.vx, p.vz), dive = p.role === 'GK' && p.diveT > 0 ? Math.sin((1 - p.diveT / 0.58) * Math.PI) : 0;
-      m.position.set(p.x, dive * 0.5, p.z); m.rotation.y = -p.face;
+      const slide = p.slideT > 0 ? Math.sin((1 - p.slideT / p.slideDuration) * Math.PI) : 0;
+      m.position.set(p.x, dive * 0.5 - slide * 0.14, p.z); m.rotation.y = -p.face;
       const run = Math.min(1, sp / 3.6), stride = Math.sin(tAnim * (8 + run * 5) + i * 0.8) * run;
       const limbs = m.userData.limbs;
       const kick = p.kickT > 0 ? Math.sin((1 - p.kickT / 0.42) * Math.PI) : 0, kickingLeg = p.kickSide;
@@ -340,16 +341,17 @@
       limbs.lowerLegs[1].rotation.z = Math.max(0, stride) * 0.95 + (kickingLeg === 1 ? kick * 0.9 : 0);
       limbs.arms[0].rotation.z = -stride * 0.52 - (kickingLeg === 1 ? kick * 0.28 : 0);
       limbs.arms[1].rotation.z = stride * 0.52 - (kickingLeg === 0 ? kick * 0.28 : 0);
-      m.userData.body.rotation.z = -0.06 * run + kick * 0.11;
+      m.userData.body.rotation.z = -0.06 * run + kick * 0.11 - slide * 0.8;
       m.userData.body.rotation.x = -p.diveSide * dive * 0.72;
       if (p.role === 'GK') { limbs.arms[0].rotation.z -= dive * 0.65; limbs.arms[1].rotation.z += dive * 0.65; }
       m.userData.body.position.y = Math.sin(tAnim * 2 + i) * 0.012;
       const animation = characterAnimation[i];
       if (animation) {
         const motion = Math.min(1, sp / 3.2), jumping = p.role === 'GK' ? dive : 0;
-        if (animation.idle) animation.idle.setEffectiveWeight((1 - motion) * (1 - jumping));
-        if (animation.run) { animation.run.setEffectiveWeight(motion * (1 - jumping)); animation.run.setEffectiveTimeScale(clamp(0.65 + sp * 0.12, 0.65, 1.8)); }
+        if (animation.idle) animation.idle.setEffectiveWeight((1 - Math.max(motion, slide)) * (1 - jumping));
+        if (animation.run) { animation.run.setEffectiveWeight(Math.max(motion, slide * 0.8) * (1 - jumping)); animation.run.setEffectiveTimeScale(clamp(0.65 + sp * 0.12, 0.65, 1.8)); }
         if (animation.jump) animation.jump.setEffectiveWeight(jumping);
+        animation.actor.rotation.z = -slide * 0.8;
         animation.mixer.update(dt);
         const kickLeg = p.kickSide === 0 ? animation.leftLeg : animation.rightLeg;
         if (kickLeg && kick > 0) kickLeg.rotation.x += kick * 0.8;
@@ -471,6 +473,8 @@
     if (type === 'kickoff' && playing) banner(game.score[0] + ' - ' + game.score[1], 1200);
     else if (type === 'whistle') snd('whistle');
     else if (type === 'kick') snd('kick');
+    else if (type === 'tackle') { snd('kick'); both({ t: 'vib', ms: 45 }); }
+    else if (type === 'foul') { banner('FAUL!<small>' + CFG.teams[d.team].name + '</small>', 1800); snd('whistle'); both({ t: 'vib', ms: 130 }); }
     else if (type === 'goal') {
       banner('GOL!<small>' + CFG.teams[d.team].name + '</small>', 3000); snd('goal');
       both({ t: 'vib', ms: [220, 80, 220] });

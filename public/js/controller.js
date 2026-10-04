@@ -111,7 +111,7 @@
   // tuşlar
   const activeButtonReleases = new Map();
   const layoutKey = 'fafi27-control-layout-v1';
-  const layoutButtonIds = ['bShoot', 'bPass', 'bSwitch', 'bSprint', 'bPressure'];
+  const layoutButtonIds = ['bShoot', 'bPass', 'bSwitch', 'bSprint', 'bPressure', 'bSlide'];
   let layoutEditing = false, draggedControl = null, dragPointer = null, dragOffsetX = 0, dragOffsetY = 0;
   let controlPositions = {};
 
@@ -180,7 +180,7 @@
 
   function bindBtn(id, name) {
     const el = $(id); let pid = null, startedAt = 0, startY = 0, loft = false, chargeRafId = 0;
-    const fill = name === 'shoot' ? $('chargeFill') : name === 'pass' ? $('passChargeFill') : null;
+    const fill = name === 'shoot' ? $('chargeFill') : name === 'pass' ? $('passChargeFill') : name === 'slide' ? $('slideChargeFill') : null;
     function updateCharge() {
       if (pid === null || !fill) return;
       fill.style.width = Math.min(1, (performance.now() - startedAt) / 1200) * 100 + '%';
@@ -215,7 +215,7 @@
     el.addEventListener('lostpointercapture', release);
   }
   bindBtn('bShoot', 'shoot'); bindBtn('bPass', 'pass'); bindBtn('bSwitch', 'switch');
-  bindBtn('bPressure', 'pressure');
+  bindBtn('bPressure', 'pressure'); bindBtn('bSlide', 'slide');
 
   const sprintButton = $('bSprint'); let sprintPointer = null;
   sprintButton.addEventListener('pointerdown', (e) => {
