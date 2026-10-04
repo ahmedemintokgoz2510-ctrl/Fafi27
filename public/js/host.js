@@ -316,7 +316,7 @@
   scene.add(ballMesh);
   const ballShadowMat = new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.24 });
   const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.52, 18), ballShadowMat); ballShadow.rotation.x = -Math.PI / 2; ballShadow.position.y = 0.03; scene.add(ballShadow);
-  const ballMarker = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.98, 32), new THREE.MeshBasicMaterial({ color: '#ffd34f', transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+  const ballMarker = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.98, 32), new THREE.MeshBasicMaterial({ color: '#ffd34f', transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
   ballMarker.rotation.x = -Math.PI / 2; ballMarker.position.y = 0.045; scene.add(ballMarker);
 
   function resize() {

@@ -10,7 +10,7 @@
 
   function createGame(cfg, onEvent) {
     const emit = (t, d) => onEvent && onEvent(t, d || {});
-    const B = { x: 0, y: 0.48, z: 0, vx: 0, vy: 0, vz: 0, owner: null, last: 0, ownT: 0 };
+    const B = { x: 0, y: 0.48, z: 0, vx: 0, vy: 0, vz: 0, owner: null, target: null, last: 0, ownT: 0 };
     const G = {
       L, W, HL, HW, GW, ball: B, players: [], teams: [[], []], score: [0, 0], time: 0,
       state: 'idle', stateT: 0, human: [false, false], ctrl: [null, null], chaser: [null, null],
@@ -39,7 +39,7 @@
       });
       const k = G.teams[kt][9];
       k.x = -k.dir * 0.95; k.z = 0; k.protect = 0.6;
-      B.owner = k; B.x = 0; B.y = 0.48; B.z = 0; B.vx = B.vy = B.vz = 0; B.ownT = 0; B.last = kt;
+      B.owner = k; B.target = null; B.x = 0; B.y = 0.48; B.z = 0; B.vx = B.vy = B.vz = 0; B.ownT = 0; B.last = kt;
       G.input.forEach((i) => { i.charge = -1; i.sprint = false; i.pressure = false; });
       G.ctrl = [null, null];
       G.state = 'kickoff'; G.stateT = 1.5;
@@ -56,7 +56,7 @@
     function kick(p, dx, dz, speed, jitter, lift = 0) {
       let a = Math.atan2(dz, dx) + (jitter ? rand(-jitter, jitter) : 0);
       B.vx = Math.cos(a) * speed; B.vy = lift; B.vz = Math.sin(a) * speed;
-      B.owner = null; B.last = p.team; p.noGrab = 0.5; p.kickT = 0.42;
+      B.owner = null; B.target = null; B.last = p.team; p.noGrab = 0.5; p.kickT = 0.42;
       emit('kick', { team: p.team, speed });
     }
 
@@ -85,6 +85,7 @@
       const d = dist(p, best);
       const speed = clamp((d * 1.3 + 9) * (1 + power * 0.4), 14, 48);
       kick(p, best.x + best.vx * 0.3 - p.x, best.z + best.vz * 0.3 - p.z, speed, 0.03, loft ? 7 + power * 4 : 0);
+      B.target = best;
       return true;
     }
 
@@ -93,6 +94,13 @@
       const dx = targetX - p.x, dz = targetZ - p.z;
       const speed = clamp(Math.hypot(dx, dz) * 0.48 + 16, 22, 36) * (1 + power * 0.2);
       kick(p, dx, dz, speed, 0.02, 9 + power * 4);
+      let receiver = null, nearest = 1e9;
+      for (const teammate of G.teams[p.team]) {
+        if (teammate === p) continue;
+        const distance = Math.hypot(teammate.x - targetX, teammate.z - targetZ);
+        if (distance < nearest) { nearest = distance; receiver = teammate; }
+      }
+      B.target = receiver;
     }
 
     function doShoot(p, charge, ai, loft = false) {
@@ -107,7 +115,8 @@
         const gx = goalX - p.x, gz = -p.z, gn = Math.hypot(gx, gz) || 1;
         if ((ax * gx + az * gz) / gn > 0.6) { ax = ax * 0.3 + (gx / gn) * 0.7; az = az * 0.3 + (gz / gn) * 0.7; }
       }
-      kick(p, ax, az, loft ? 20 + 12 * charge : 24 + 22 * charge, 0.03 + 0.07 * charge, loft ? 7 + charge * 4 : 0);
+      const air = loft || (!ai && charge > 0.5);
+      kick(p, ax, az, air ? 20 + 14 * charge : 24 + 22 * charge, 0.03 + 0.06 * charge, air ? 4 + charge * 7 : 0);
       p.shootCd = 1;
     }
 
@@ -122,7 +131,7 @@
       if (btn === 'pass') {
         if (down || B.owner !== p) return;
         const power = clamp(Number(options.hold) || 0, 0, 1.2) / 1.2;
-        const loft = !!options.loft;
+        const loft = !!options.loft || power > 0.42;
         if (loft && p.x * p.dir > 13 && Math.abs(p.z) > HW * 0.3) doCross(p, power);
         else doPass(p, inp.x, inp.z, false, power, loft);
       }
@@ -270,7 +279,7 @@
             placeRestart(opponent, restartX, restartZ, Math.atan2(tackler.z - opponent.z, tackler.x - opponent.x));
             emit('foul', { team: opponent.team, player: opponent.number });
           } else if (B.owner === opponent || dist(opponent, B) < 2.3) {
-            B.owner = null; B.x = opponent.x; B.y = 0.48; B.z = opponent.z;
+            B.owner = null; B.target = null; B.x = opponent.x; B.y = 0.48; B.z = opponent.z;
             B.vx = tackler.slideX * (8 + tackler.slidePower * 12); B.vy = 0.8; B.vz = tackler.slideZ * (8 + tackler.slidePower * 12);
             B.ownT = 0; B.last = tackler.team; opponent.noGrab = 0.5; tackler.noGrab = 0.25;
             emit('tackle', { team: tackler.team });
@@ -289,7 +298,7 @@
     // ---------- top ----------
     function placeRestart(p, x, z, face) {
       p.face = face; p.x = x - Math.cos(face) * 0.95; p.z = z - Math.sin(face) * 0.95; p.vx = p.vz = 0;
-      B.owner = p; B.ownT = 0; p.protect = 0.8; B.vx = B.vy = B.vz = 0; B.x = x; B.y = 0.48; B.z = z; B.last = p.team;
+      B.owner = p; B.target = null; B.ownT = 0; p.protect = 0.8; B.vx = B.vy = B.vz = 0; B.x = x; B.y = 0.48; B.z = z; B.last = p.team;
       for (const q of G.players) if (q.team !== p.team) q.noGrab = Math.max(q.noGrab, 1.2);
       emit('restart');
     }
@@ -300,7 +309,7 @@
     }
     function goal(att) {
       G.score[att]++; G.state = 'goal'; G.stateT = 3.4; G.conceded = 1 - att;
-      B.owner = null; B.vx *= 0.3; B.vz *= 0.3;
+      B.owner = null; B.target = null; B.vx *= 0.3; B.vz *= 0.3;
       emit('goal', { team: att });
     }
     function checkBounds() {
@@ -324,8 +333,9 @@
         B.ownT += dt; B.last = o.team;
         B.x = o.x + Math.cos(o.face) * 0.95; B.y = 0.48; B.z = o.z + Math.sin(o.face) * 0.95; B.vx = o.vx; B.vy = 0; B.vz = o.vz;
         if (o.protect <= 0) for (const opp of G.teams[1 - o.team]) {
-          if (opp.noGrab <= 0 && dist(opp, o) < 1.5 && Math.random() < 2.4 * dt) {
-            B.owner = opp; B.ownT = 0; opp.protect = 0.35; o.noGrab = 0.8; emit('steal'); break;
+          const pressure = G.human[opp.team] ? G.ctrl[opp.team] === opp && G.input[opp.team].pressure : true;
+          if (opp.noGrab <= 0 && pressure && dist(opp, o) < 1.5 && Math.random() < (G.human[opp.team] ? 3 : 1.1) * dt) {
+            B.owner = opp; B.target = null; B.ownT = 0; opp.protect = 0.35; o.noGrab = 0.8; emit('steal'); break;
           }
         }
       } else {
@@ -346,7 +356,7 @@
           if (B.y > 0.95 && B.y < 4.6 && inBox && reach < 3.4 && B.vx * gk.dir < -1.5 && gk.noGrab <= 0) {
             gk.diveT = 0.58; gk.diveSide = Math.sign(B.z - gk.z) || 1;
             if (Math.random() < clamp(0.92 - reach * 0.18, 0.35, 0.78)) {
-              B.owner = gk; B.y = 0.48; B.vy = 0; B.ownT = 0; gk.protect = 0.65; B.last = gk.team;
+              B.owner = gk; B.target = null; B.y = 0.48; B.vy = 0; B.ownT = 0; gk.protect = 0.65; B.last = gk.team;
             } else {
               B.vx = gk.dir * rand(8, 13); B.vz = rand(-12, 12); B.vy = Math.max(0, B.vy * 0.4); gk.noGrab = 0.7; B.last = gk.team;
             }
@@ -356,18 +366,21 @@
         }
         if (!B.owner) for (const gk of [G.teams[0][0], G.teams[1][0]]) {
           if (B.y > 2.3 || gk.noGrab > 0 || dist(gk, B) > 1.8 || B.vx * gk.dir >= 0 && spd > 3) continue;
-          if (spd < 28) { B.owner = gk; B.ownT = 0; gk.protect = 0.4; B.last = gk.team; emit('save'); break; }
+          if (spd < 28) { B.owner = gk; B.target = null; B.ownT = 0; gk.protect = 0.4; B.last = gk.team; emit('save'); break; }
           B.vx = gk.dir * rand(10, 16); B.vz = rand(-12, 12); gk.noGrab = 0.5; B.last = gk.team; emit('save'); break;
         }
         if (!B.owner && spd >= 26) {
           for (const p of G.teams[1 - B.last]) {
             if (B.y > 1.45) continue;
-            if (p.noGrab <= 0 && p.role !== 'GK' && dist(p, B) < 1.0) { B.vx *= 0.35; B.vz = B.vz * 0.35 + rand(-8, 8); B.last = p.team; p.noGrab = 0.3; break; }
+            if (p.noGrab <= 0 && p.role !== 'GK' && dist(p, B) < 1.0) { B.vx *= 0.35; B.vz = B.vz * 0.35 + rand(-8, 8); B.target = null; B.last = p.team; p.noGrab = 0.3; break; }
           }
         } else if (!B.owner) {
           let best = null, bd = 1.35;
-          for (const p of G.players) { if (B.y > 1.45 || p.noGrab > 0) continue; const d = dist(p, B); if (d < bd) { bd = d; best = p; } }
-          if (best) { B.owner = best; B.y = 0.48; B.vy = 0; B.ownT = 0; best.protect = 0.25; B.last = best.team; }
+          for (const p of G.players) {
+            if (B.y > 1.0 || p.noGrab > 0 || spd > 20 || G.human[p.team] && G.ctrl[p.team] !== p && B.target !== p) continue;
+            const d = dist(p, B); if (d < bd) { bd = d; best = p; }
+          }
+          if (best) { B.owner = best; B.target = null; B.y = 0.48; B.vy = 0; B.ownT = 0; best.protect = 0.25; B.last = best.team; }
         }
       }
       if (detect) checkBounds();
