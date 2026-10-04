@@ -111,11 +111,20 @@
     g.scale.setScalar(1.18);
     const kit = role === 'GK' ? '#d4ae48' : t.color;
     const skin = ['#d9a884', '#b77e5d', '#8b5e46', '#e2bd9c'][player.idx % 4];
-    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.39, 0.34, 1.0, 10), mat(kit)); torso.position.y = 1.36; body.add(torso);
-    const shorts = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.31, 0.42, 10), mat(role === 'GK' ? '#273442' : t.color)); shorts.position.y = 0.65; body.add(shorts);
+    const shortsColor = role === 'GK' ? '#273442' : (t.shortsColor || t.color);
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.34, 1.0, 12), mat(kit)); torso.position.y = 1.36; body.add(torso);
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.035, 6, 12), mat(t.color2)); collar.position.set(0.015, 1.84, 0); collar.rotation.y = Math.PI / 2; body.add(collar);
+    const shorts = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.31, 0.42, 10), mat(shortsColor)); shorts.position.y = 0.65; body.add(shorts);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 10), mat(skin)); head.position.y = 2.08; body.add(head);
-    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.265, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.48), mat('#302a27'));
+    const hairColors = ['#302a27', '#211d1b', '#5a3c2d', '#382c25'];
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.265, 10, 7, 0, Math.PI * 2, 0, Math.PI * 0.48), mat(hairColors[player.idx % hairColors.length]));
     hair.position.y = 2.12; body.add(hair);
+    [-1, 1].forEach((side) => {
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), mat(skin)); ear.position.set(0, 2.06, side * 0.245); body.add(ear);
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), mat('#25201e')); eye.position.set(0.218, 2.095, side * 0.09); eye.scale.set(0.45, 1, 0.75); body.add(eye);
+    });
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), mat(skin)); nose.position.set(0.255, 2.015, 0); nose.scale.set(0.7, 0.7, 0.7); body.add(nose);
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.025, 0.09), mat('#70493a')); mouth.position.set(0.237, 1.96, 0); body.add(mouth);
     const stripes = [];
     [-0.14, 0, 0.14].forEach((z) => {
       const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.68, 0.075), mat(t.color2));
@@ -185,14 +194,21 @@
     tAnim += dt;
     const B = game.ball;
     game.players.forEach((p, i) => {
-      const m = meshes[i], sp = Math.hypot(p.vx, p.vz);
-      m.position.set(p.x, 0, p.z); m.rotation.y = -p.face;
-      const run = Math.min(1, sp / 4), stride = Math.sin(tAnim * 13 + i * 0.8) * run;
+      const m = meshes[i], sp = Math.hypot(p.vx, p.vz), dive = p.role === 'GK' && p.diveT > 0 ? Math.sin((1 - p.diveT / 0.58) * Math.PI) : 0;
+      m.position.set(p.x, dive * 0.5, p.z); m.rotation.y = -p.face;
+      const run = Math.min(1, sp / 3.6), stride = Math.sin(tAnim * (8 + run * 5) + i * 0.8) * run;
       const limbs = m.userData.limbs;
-      limbs.legs[0].rotation.z = stride * 0.62; limbs.legs[1].rotation.z = -stride * 0.62;
-      limbs.lowerLegs[0].rotation.z = Math.max(0, -stride) * 0.9; limbs.lowerLegs[1].rotation.z = Math.max(0, stride) * 0.9;
-      limbs.arms[0].rotation.z = -stride * 0.48; limbs.arms[1].rotation.z = stride * 0.48;
-      m.userData.body.rotation.z = -0.06 * run;
+      const kick = p.kickT > 0 ? Math.sin((1 - p.kickT / 0.42) * Math.PI) : 0, kickingLeg = p.kickSide;
+      limbs.legs[0].rotation.z = stride * 0.72 + (kickingLeg === 0 ? kick * 1.45 : 0);
+      limbs.legs[1].rotation.z = -stride * 0.72 + (kickingLeg === 1 ? kick * 1.45 : 0);
+      limbs.lowerLegs[0].rotation.z = Math.max(0, -stride) * 0.95 + (kickingLeg === 0 ? kick * 0.9 : 0);
+      limbs.lowerLegs[1].rotation.z = Math.max(0, stride) * 0.95 + (kickingLeg === 1 ? kick * 0.9 : 0);
+      limbs.arms[0].rotation.z = -stride * 0.52 - (kickingLeg === 1 ? kick * 0.28 : 0);
+      limbs.arms[1].rotation.z = stride * 0.52 - (kickingLeg === 0 ? kick * 0.28 : 0);
+      m.userData.body.rotation.z = -0.06 * run + kick * 0.11;
+      m.userData.body.rotation.x = -p.diveSide * dive * 0.72;
+      if (p.role === 'GK') { limbs.arms[0].rotation.z -= dive * 0.65; limbs.arms[1].rotation.z += dive * 0.65; }
+      m.userData.body.position.y = Math.sin(tAnim * 2 + i) * 0.012;
       m.userData.nameLabel.visible = playing && game.human[p.team] && game.ctrl[p.team] === p;
     });
     rings.forEach((r, t) => {

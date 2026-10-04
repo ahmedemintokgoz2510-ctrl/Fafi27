@@ -109,7 +109,7 @@
   }, 33);
 
   // tuşlar
-  let chargeT0 = 0, chargeRaf = 0;
+  const activeButtonReleases = new Map();
   const layoutKey = 'fafi27-control-layout-v1';
   const layoutButtonIds = ['bShoot', 'bPass', 'bSwitch', 'bSprint', 'bPressure'];
   let layoutEditing = false, draggedControl = null, dragPointer = null, dragOffsetX = 0, dragOffsetY = 0;
@@ -178,37 +178,41 @@
     });
   });
 
-  function chargeLoop(name, startedAt) {
-    const fill = $(name === 'shoot' ? 'chargeFill' : 'passChargeFill');
-    fill.style.width = Math.min(1, (performance.now() - startedAt) / 1200) * 100 + '%';
-    chargeRaf = requestAnimationFrame(() => chargeLoop(name, startedAt));
-  }
   function bindBtn(id, name) {
-    const el = $(id); let pid = null, startedAt = 0, startY = 0, loft = false;
+    const el = $(id); let pid = null, startedAt = 0, startY = 0, loft = false, chargeRafId = 0;
+    const fill = name === 'shoot' ? $('chargeFill') : name === 'pass' ? $('passChargeFill') : null;
+    function updateCharge() {
+      if (pid === null || !fill) return;
+      fill.style.width = Math.min(1, (performance.now() - startedAt) / 1200) * 100 + '%';
+      chargeRafId = requestAnimationFrame(updateCharge);
+    }
+    function release(e) {
+      if (e.pointerId !== pid) return;
+      const releasedPointer = pid;
+      pid = null; activeButtonReleases.delete(releasedPointer); el.classList.remove('on', 'loft');
+      const hold = Math.min(1.2, Math.max(0, (performance.now() - startedAt) / 1000));
+      socket.emit('c2h', { t: 'btn', b: name, d: false, hold, loft });
+      if (chargeRafId) cancelAnimationFrame(chargeRafId);
+      if (fill) fill.style.width = '0';
+      loft = false;
+    }
     el.addEventListener('pointerdown', (e) => {
       if (layoutEditing) { beginControlDrag(e, el); return; }
       if (pid !== null) return; pid = e.pointerId; el.setPointerCapture(pid); el.classList.add('on');
       startedAt = performance.now(); startY = e.clientY; loft = false;
+      activeButtonReleases.set(pid, release);
       socket.emit('c2h', { t: 'btn', b: name, d: true });
       if (navigator.vibrate) navigator.vibrate(12);
-      if (name === 'shoot' || name === 'pass') chargeLoop(name, startedAt);
+      if (fill) updateCharge();
     });
     el.addEventListener('pointermove', (e) => {
       if (e.pointerId !== pid || (name !== 'shoot' && name !== 'pass')) return;
       loft = startY - e.clientY > Math.max(42, innerHeight * 0.09);
       el.classList.toggle('loft', loft);
     });
-    const up = (e) => {
-      if (e.pointerId !== pid) return; pid = null; el.classList.remove('on');
-      const hold = Math.min(1.2, Math.max(0, (performance.now() - startedAt) / 1000));
-      socket.emit('c2h', { t: 'btn', b: name, d: false, hold, loft });
-      if (name === 'shoot' || name === 'pass') {
-        cancelAnimationFrame(chargeRaf);
-        $(name === 'shoot' ? 'chargeFill' : 'passChargeFill').style.width = '0';
-      }
-      el.classList.remove('loft'); loft = false;
-    };
-    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointercancel', release);
+    el.addEventListener('lostpointercapture', release);
   }
   bindBtn('bShoot', 'shoot'); bindBtn('bPass', 'pass'); bindBtn('bSwitch', 'switch');
   bindBtn('bPressure', 'pressure');
@@ -224,6 +228,9 @@
   const releaseSprint = (e) => { if (e.pointerId === sprintPointer) sprintPointer = null; };
   sprintButton.addEventListener('pointerup', releaseSprint);
   sprintButton.addEventListener('pointercancel', releaseSprint);
+  const releaseHeldButtons = () => activeButtonReleases.forEach((release, pointerId) => release({ pointerId }));
+  window.addEventListener('blur', releaseHeldButtons);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) releaseHeldButtons(); });
 
   document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
   document.addEventListener('contextmenu', (e) => e.preventDefault());

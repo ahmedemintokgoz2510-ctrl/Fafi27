@@ -24,7 +24,7 @@
         cfg.formation.forEach((f, i) => {
             const identity = (cfg.teams[t].players || [])[i] || {};
             const p = { team: t, idx: i, role: f.role, name: identity.name || 'Oyuncu ' + (i + 1), number: identity.number || i + 1, dir, hx: f.x * HL * dir, hz: f.z * HW * dir, x: 0, z: 0, vx: 0, vz: 0,
-            face: t === 0 ? 0 : Math.PI, noGrab: 0, protect: 0, bias: Math.random() * 1.5, shootCd: 0 };
+            face: t === 0 ? 0 : Math.PI, noGrab: 0, protect: 0, bias: Math.random() * 1.5, shootCd: 0, kickT: 0, kickSide: i % 2, diveT: 0, diveSide: 1 };
           G.players.push(p); G.teams[t].push(p);
         });
       }
@@ -33,7 +33,7 @@
     function placeKickoff(kt) {
       G.players.forEach((p) => {
         p.x = p.hx; p.z = p.hz; p.vx = p.vz = 0; p.face = p.dir === 1 ? 0 : Math.PI;
-        p.noGrab = p.team === kt ? 0 : 1.8; p.protect = 0;
+        p.noGrab = p.team === kt ? 0 : 1.8; p.protect = 0; p.kickT = 0; p.diveT = 0;
       });
       const k = G.teams[kt][9];
       k.x = -k.dir * 0.95; k.z = 0; k.protect = 0.6;
@@ -54,7 +54,7 @@
     function kick(p, dx, dz, speed, jitter, lift = 0) {
       let a = Math.atan2(dz, dx) + (jitter ? rand(-jitter, jitter) : 0);
       B.vx = Math.cos(a) * speed; B.vy = lift; B.vz = Math.sin(a) * speed;
-      B.owner = null; B.last = p.team; p.noGrab = 0.5;
+      B.owner = null; B.last = p.team; p.noGrab = 0.5; p.kickT = 0.42;
       emit('kick', { team: p.team, speed });
     }
 
@@ -225,7 +225,7 @@
         chaserFor(t);
       }
       for (const p of G.players) {
-        p.noGrab -= dt; p.protect -= dt; p.shootCd -= dt;
+        p.noGrab -= dt; p.protect -= dt; p.shootCd -= dt; p.kickT = Math.max(0, p.kickT - dt); p.diveT = Math.max(0, p.diveT - dt);
         if (G.human[p.team] && G.ctrl[p.team] === p) humanStep(p, dt); else aiStep(p, dt);
         p.x = clamp(p.x + p.vx * dt, -HL - 1.5, HL + 1.5);
         p.z = clamp(p.z + p.vz * dt, -HW - 1.5, HW + 1.5);
@@ -293,6 +293,20 @@
           return;
         }
         for (const gk of [G.teams[0][0], G.teams[1][0]]) {
+          const goalX = -gk.dir * HL, inBox = Math.abs(B.x - goalX) < 18 && Math.abs(B.z) < 19;
+          const reach = Math.hypot(gk.x - B.x, gk.z - B.z);
+          if (B.y > 0.95 && B.y < 4.6 && inBox && reach < 3.4 && B.vx * gk.dir < -1.5 && gk.noGrab <= 0) {
+            gk.diveT = 0.58; gk.diveSide = Math.sign(B.z - gk.z) || 1;
+            if (Math.random() < clamp(0.92 - reach * 0.18, 0.35, 0.78)) {
+              B.owner = gk; B.y = 0.48; B.vy = 0; B.ownT = 0; gk.protect = 0.65; B.last = gk.team;
+            } else {
+              B.vx = gk.dir * rand(8, 13); B.vz = rand(-12, 12); B.vy = Math.max(0, B.vy * 0.4); gk.noGrab = 0.7; B.last = gk.team;
+            }
+            emit('save', { team: gk.team, high: true, caught: B.owner === gk });
+            break;
+          }
+        }
+        if (!B.owner) for (const gk of [G.teams[0][0], G.teams[1][0]]) {
           if (B.y > 2.3 || gk.noGrab > 0 || dist(gk, B) > 1.8 || B.vx * gk.dir >= 0 && spd > 3) continue;
           if (spd < 28) { B.owner = gk; B.ownT = 0; gk.protect = 0.4; B.last = gk.team; emit('save'); break; }
           B.vx = gk.dir * rand(10, 16); B.vz = rand(-12, 12); gk.noGrab = 0.5; B.last = gk.team; emit('save'); break;

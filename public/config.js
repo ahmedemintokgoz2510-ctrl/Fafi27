@@ -4,7 +4,7 @@ window.FAFI = {
   durations: [3, 5, 8], // dakika
   teams: [
     {
-      name: 'FC Barcelona', short: 'FCB', color: '#17479e', color2: '#a50044', logo: null,
+      name: 'FC Barcelona', short: 'FCB', color: '#17479e', color2: '#a50044', shortsColor: '#a50044', logo: null,
       players: [
         { name: 'Joan Garcia', number: 1 }, { name: 'Joao Cancelo', number: 2 },
         { name: 'Jules Kounde', number: 23 }, { name: 'Pau Cubarsi', number: 5 },
@@ -15,7 +15,7 @@ window.FAFI = {
       ]
     },
     {
-      name: 'Real Madrid', short: 'RMA', color: '#f1eee6', color2: '#d8bd68', logo: null,
+      name: 'Real Madrid', short: 'RMA', color: '#f1eee6', color2: '#d8bd68', shortsColor: '#17191d', logo: null,
       players: [
         { name: 'Thibaut Courtois', number: 1 }, { name: 'Trent Alexander-Arnold', number: 12 },
         { name: 'Ibrahima Konate', number: 16 }, { name: 'Dean Huijsen', number: 4 },
