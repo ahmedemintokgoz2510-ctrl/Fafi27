@@ -85,6 +85,48 @@
       endStand.position.set(side * (L / 2 + offset), y, 0); scene.add(endStand);
     });
   }
+  const crowdFiles = ['male-cheering.glb', 'female-cheering.glb', 'male-standing.glb', 'female-standing.glb', 'male-waving.glb', 'female-waving.glb'];
+  Promise.all(crowdFiles.map((file) => new Promise((resolve) => {
+    new THREE.GLTFLoader().load('assets/models/crowd/' + file, (gltf) => resolve(gltf.scene), undefined, () => resolve(null));
+  }))).then((crowdModels) => {
+    const crowd = crowdModels.filter(Boolean);
+    if (!crowd.length) return;
+    const variants = crowd.map((model) => {
+      model.traverse((object) => {
+        if (!object.isMesh || !object.material) return;
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.forEach((material) => {
+          if (material.color) material.color.multiplyScalar(1.6);
+          material.roughness = 0.88;
+        });
+      });
+      const bounds = new THREE.Box3().setFromObject(model);
+      const size = bounds.getSize(new THREE.Vector3());
+      const center = bounds.getCenter(new THREE.Vector3());
+      return { model, bounds, center, scale: 2.55 / size.y };
+    });
+    const placements = [];
+    [0, 2, 4, 6].forEach((row) => {
+      const y = 0.42 + row * 0.62 + 0.26, offset = W / 2 + 3.8 + row * 1.65;
+      [-1, 1].forEach((side) => {
+        [-43, -26, -9, 9, 26, 43].forEach((x, index) => {
+          placements.push({ x: x + row * 0.45, y, z: side * offset, rotation: side < 0 ? Math.PI : 0, variant: row + index });
+        });
+        [-20, 0, 20].forEach((z, index) => {
+          placements.push({ x: side * offset, y, z: z + row * 0.45, rotation: side < 0 ? -Math.PI / 2 : Math.PI / 2, variant: row + index + 2 });
+        });
+      });
+    });
+    placements.forEach((spot, index) => {
+      const { model, bounds, center, scale } = variants[(spot.variant + index) % variants.length];
+      const person = model.clone(true);
+      person.scale.setScalar(scale);
+      person.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
+      const seat = new THREE.Group();
+      seat.position.set(spot.x, spot.y, spot.z); seat.rotation.y = spot.rotation;
+      seat.add(person); scene.add(seat);
+    });
+  });
 
   const white = new THREE.MeshLambertMaterial({ color: '#f1eee6' });
   const netMat = new THREE.MeshBasicMaterial({ color: '#f1eee6', transparent: true, opacity: 0.18, side: THREE.DoubleSide });
@@ -105,6 +147,15 @@
   const mats = {};
   const mat = (c) => mats[c] || (mats[c] = new THREE.MeshLambertMaterial({ color: c }));
   const shadowGeo = new THREE.CircleGeometry(0.72, 20), shadowMat = new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.26 });
+  function capsuleMesh(radius, cylinderHeight, material, segments) {
+    const capsule = new THREE.Group();
+    capsule.add(new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, cylinderHeight, segments), material));
+    [-1, 1].forEach((direction) => {
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(radius, segments, Math.max(6, segments - 2)), material);
+      cap.position.y = direction * cylinderHeight / 2; capsule.add(cap);
+    });
+    return capsule;
+  }
   function makePlayerMesh(team, player) {
     const t = CFG.teams[team], g = new THREE.Group(), body = new THREE.Group();
     const role = player.role;
@@ -121,7 +172,7 @@
     const hairColor = hairColors[player.idx % hairColors.length];
 
     const pelvis = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.31, 0.42, 12), shortMat); pelvis.position.y = 0.78; body.add(pelvis);
-    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 1.06, 7, 12), kitMat); torso.position.y = 1.56; body.add(torso);
+    const torso = capsuleMesh(0.32, 1.06, kitMat, 12); torso.position.y = 1.56; body.add(torso);
     const waist = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.29, 0.27, 10), kitMat); waist.position.y = 1.0; body.add(waist);
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.22, 10), skinMat); neck.position.y = 2.35; body.add(neck);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.27, 24, 20), skinMat); head.position.y = 2.76; body.add(head);
@@ -156,9 +207,9 @@
       legs.push(leg); lowerLegs.push(shin);
 
       const arm = new THREE.Group(); arm.position.set(side * 0.48, 1.8, 0); body.add(arm);
-      const upperArm = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.44, 4, 10), kitMat); upperArm.position.y = -0.22; arm.add(upperArm);
+      const upperArm = capsuleMesh(0.1, 0.44, kitMat, 10); upperArm.position.y = -0.22; arm.add(upperArm);
       const forearm = new THREE.Group(); forearm.position.y = -0.5; arm.add(forearm);
-      const forearmMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.38, 4, 10), skinMat); forearmMesh.position.y = -0.2; forearm.add(forearmMesh);
+      const forearmMesh = capsuleMesh(0.085, 0.38, skinMat, 10); forearmMesh.position.y = -0.2; forearm.add(forearmMesh);
       const hand = new THREE.Mesh(new THREE.SphereGeometry(0.085, 10, 8), skinMat); hand.position.y = -0.43; forearm.add(hand);
       arms.push(arm);
     });

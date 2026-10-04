@@ -5,6 +5,13 @@ Buraya kendi dosyalarını koy:
   bg.jpg    (isteğe bağlı) ana menü arka plan görseli
 Dosya yoksa oyun sessiz/görselsiz çalışmaya devam eder.
 
+Tribün izleyicileri, Eclair Assets'ın Quaternius tabanlı Background Posed
+Humans GLB Pack paketinden seçilmiş altı statik CC0 model kullanır:
+  https://eclair-assets.itch.io/background-posed-humans-glb-pack-28-free-cc0-3d-models
+  https://quaternius.com/packs/backgroundposedhumans.html
+Bu modeller statik tribün kalabalığı içindir; saha oyuncuları animasyonlu
+Quaternius modelini kullanmaya devam eder.
+
 Saha ve tribünler Three.js ile oluşturulur. Oyuncular, rig ve animasyon içeren
 Quaternius Animated Human GLB modelini kullanır:
   https://poly.pizza/m/c3Ibh9I3udk
