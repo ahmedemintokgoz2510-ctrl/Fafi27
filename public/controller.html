@@ -52,6 +52,7 @@
   #pad.editing #layoutToggle{border-color:var(--brass);color:var(--brass)}
   #bShoot{--size:clamp(108px,27vmin,148px);width:var(--size);height:var(--size);right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px));bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px));font-size:1.7rem;border-color:rgba(236,232,220,.72)}
   #bPass{--size:clamp(82px,21vmin,108px);width:var(--size);height:var(--size);right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px));bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px) + clamp(108px,27vmin,148px) + 12px);font-size:1.2rem}
+  #bThrough{--size:clamp(70px,17vmin,92px);width:var(--size);height:var(--size);right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px) + clamp(108px,27vmin,148px) + 14px);bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px) + clamp(108px,27vmin,148px) + 12px);font-size:.8rem;color:#9fd3ff;border-color:rgba(159,211,255,.6)}
   #bSwitch{--size:clamp(68px,16vmin,86px);width:var(--size);height:var(--size);right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px) + clamp(108px,27vmin,148px) + 14px);bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px) + 4px);font-size:.78rem;color:var(--muted)}
   #bSprint,#bPressure{--size:clamp(72px,16vmin,84px);width:var(--size);height:var(--size);bottom:calc(env(safe-area-inset-bottom) + clamp(16px,6vh,32px) + clamp(68px,16vmin,86px) + 14px);font-size:.72rem}
   #bSprint{right:calc(env(safe-area-inset-right) + clamp(16px,4vw,42px) + clamp(108px,27vmin,148px) + clamp(68px,16vmin,86px) + 22px)}
@@ -92,6 +93,7 @@
   <div id="right">
     <button class="btn" id="bShoot" type="button" aria-label="Şut çek, basılı tutarak güç biriktir">ŞUT<div id="charge"><div id="chargeFill"></div></div></button>
     <button class="btn" id="bPass" type="button" aria-label="Pas ver; basılı tutarak güç biriktir, yukarı sürükleyerek havadan gönder">PAS<div id="passCharge"><div id="passChargeFill"></div></div></button>
+    <button class="btn" id="bThrough" type="button" aria-label="Ara pası; boşa koşan oyuncunun önüne atar">ARA</button>
     <button class="btn" id="bSwitch" type="button" aria-label="Kontrol edilen oyuncuyu değiştir">DEĞİŞ</button>
     <button class="btn" id="bSprint" type="button" aria-label="Koşmayı aç veya kapat" aria-pressed="false">KOŞ</button>
     <button class="btn" id="bPressure" type="button" aria-label="Basılı tutarak topa baskı yap">BASKI</button>

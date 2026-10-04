@@ -48,7 +48,7 @@
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#0f1a14');
   scene.fog = new THREE.Fog('#0f1a14', 150, 260);
-  const cam = new THREE.PerspectiveCamera(58, 1, 0.5, 400);
+  const cam = new THREE.PerspectiveCamera(46, 1, 0.5, 400);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x2a3a2e, 1.05));
   const sun = new THREE.DirectionalLight(0xffffff, 0.8); sun.position.set(-20, 60, 30); scene.add(sun);
 
@@ -91,14 +91,20 @@
   }))).then((crowdModels) => {
     const crowd = crowdModels.filter(Boolean);
     if (!crowd.length) return;
-    const variants = crowd.map((model) => {
+    const shirtColors = ['#b25c4b', '#6488a0', '#d0ac5e', '#587d61', '#8c718d', '#bcc4c5'];
+    const trouserColors = ['#48515a', '#5a4e46', '#485b53'];
+    const variants = crowd.map((model, variantIndex) => {
       model.traverse((object) => {
         if (!object.isMesh || !object.material) return;
         const materials = Array.isArray(object.material) ? object.material : [object.material];
-        materials.forEach((material) => {
-          if (material.color) material.color.multiplyScalar(1.6);
-          material.roughness = 0.88;
+        const visibleMaterials = materials.map((material) => {
+          const color = material.color ? material.color.clone() : new THREE.Color('#777777');
+          if (object.name === 'Shirt') color.set(shirtColors[variantIndex]);
+          else if (object.name === 'Pants') color.set(trouserColors[variantIndex % trouserColors.length]);
+          else if (object.name === 'Shoes') color.set('#46484a');
+          return new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
         });
+        object.material = Array.isArray(object.material) ? visibleMaterials : visibleMaterials[0];
       });
       const bounds = new THREE.Box3().setFromObject(model);
       const size = bounds.getSize(new THREE.Vector3());
@@ -324,7 +330,7 @@
   }
   addEventListener('resize', resize); resize();
 
-  let camX = 0, orbit = 0, tAnim = 0;
+  let camX = 0, camY = 34, camZ = 50, orbit = 0, tAnim = 0;
   function frame(dt) {
     tAnim += dt;
     const B = game.ball;
@@ -356,7 +362,7 @@
         const kickLeg = p.kickSide === 0 ? animation.leftLeg : animation.rightLeg;
         if (kickLeg && kick > 0) kickLeg.rotation.x += kick * 0.8;
       }
-      m.userData.nameLabel.visible = playing && game.human[p.team] && game.ctrl[p.team] === p;
+      m.userData.nameLabel.visible = false;
     });
     rings.forEach((r, t) => {
       const c = playing && game.human[t] ? game.ctrl[t] : null;
@@ -367,11 +373,16 @@
     ballShadow.scale.setScalar(1 + Math.max(0, B.y - ballRadius) * 0.1);
     ballShadowMat.opacity = clamp(0.24 - Math.max(0, B.y - ballRadius) * 0.025, 0.06, 0.24);
     if (!playing || phase === 'end') {
+      if (cam.fov !== 58) { cam.fov = 58; cam.updateProjectionMatrix(); }
       orbit += dt * 0.1;
       cam.position.set(Math.sin(orbit) * 36, 58, 52 + Math.cos(orbit) * 4); cam.lookAt(0, 0, 0);
     } else {
-      camX += (clamp(B.x * 0.8, -20, 20) - camX) * Math.min(1, 2.5 * dt);
-      cam.position.set(camX, 54, 40); cam.lookAt(camX, 0, 0);
+      if (cam.fov !== 46) { cam.fov = 46; cam.updateProjectionMatrix(); }
+      camX += (clamp(B.x * 0.85, -26, 26) - camX) * Math.min(1, 2.5 * dt);
+      const nearGoal = clamp((Math.abs(B.x) - 26) / 20, 0, 1);
+      camY += (34 - 8 * nearGoal - camY) * Math.min(1, 1.6 * dt);
+      camZ += (50 - 11 * nearGoal - camZ) * Math.min(1, 1.6 * dt);
+      cam.position.set(camX, camY, camZ); cam.lookAt(camX, 0, 2);
     }
     ballMarker.position.x = B.x; ballMarker.position.z = B.z;
     const markerPulse = 1 + Math.sin(tAnim * 5) * 0.06; ballMarker.scale.set(markerPulse, markerPulse, 1);
@@ -392,7 +403,7 @@
     const sc = game.score.join('-'); if (sc !== lastScore) { lastScore = sc; $('sc0').textContent = game.score[0]; $('sc1').textContent = game.score[1]; }
     [0, 1].forEach((t) => {
       const player = game.human[t] ? game.ctrl[t] : null;
-      $('active' + t).textContent = player ? '#' + player.number + ' ' + player.name : '';
+      $('active' + t).textContent = player ? '#' + player.number + ' ' + player.name + ' · Kondisyon %' + Math.round(player.stamina * 100) : '';
     });
   }
   let bannerTimer;

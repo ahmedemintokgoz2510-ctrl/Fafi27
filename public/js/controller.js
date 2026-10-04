@@ -111,7 +111,7 @@
   // tuşlar
   const activeButtonReleases = new Map();
   const layoutKey = 'fafi27-control-layout-v1';
-  const layoutButtonIds = ['bShoot', 'bPass', 'bSwitch', 'bSprint', 'bPressure', 'bSlide'];
+  const layoutButtonIds = ['bShoot', 'bPass', 'bThrough', 'bSwitch', 'bSprint', 'bPressure', 'bSlide'];
   let layoutEditing = false, draggedControl = null, dragPointer = null, dragOffsetX = 0, dragOffsetY = 0;
   let controlPositions = {};
 
@@ -214,7 +214,7 @@
     el.addEventListener('pointercancel', release);
     el.addEventListener('lostpointercapture', release);
   }
-  bindBtn('bShoot', 'shoot'); bindBtn('bPass', 'pass'); bindBtn('bSwitch', 'switch');
+  bindBtn('bShoot', 'shoot'); bindBtn('bPass', 'pass'); bindBtn('bThrough', 'through'); bindBtn('bSwitch', 'switch');
   bindBtn('bPressure', 'pressure'); bindBtn('bSlide', 'slide');
 
   const sprintButton = $('bSprint'); let sprintPointer = null;
