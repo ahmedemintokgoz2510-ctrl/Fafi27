@@ -196,7 +196,7 @@
   function makePlayerMesh(team, player) {
     const t = CFG.teams[team], g = new THREE.Group(), body = new THREE.Group();
     const role = player.role;
-    g.scale.setScalar(1.18);
+    g.scale.setScalar(1.18); g.rotation.order = 'YXZ';
     const kit = role === 'GK' ? '#d4ae48' : t.color;
     const skin = player.appearance?.skin || ['#d9a884', '#b77e5d', '#8b5e46', '#e2bd9c', '#c79572', '#704a35', '#e0bc9d', '#966448'][(player.number + team * 3) % 8];
     const shortsColor = role === 'GK' ? '#273442' : (t.shortsColor || t.color);
@@ -265,6 +265,7 @@
   }
   const meshes = game.players.map((p) => makePlayerMesh(p.team, p));
   const characterAnimation = new Array(game.players.length).fill(null);
+  const diveEnv = new Array(game.players.length).fill(0);
   const getBone = (actor, names) => {
     for (const name of names) {
       const bone = actor.getObjectByName(name);
@@ -324,6 +325,7 @@
         const rightFoot = getBone(actor, ['RightFoot', 'RightToeBase', 'FootR']);
         const leftArm = getBone(actor, ['LeftArm', 'LeftUpperArm', 'UpperArmL']);
         const rightArm = getBone(actor, ['RightArm', 'RightUpperArm', 'UpperArmR']);
+        const leftLower = getBone(actor, ['LowerArmL', 'LeftForeArm']), rightLower = getBone(actor, ['LowerArmR', 'RightForeArm']);
         if (head && url.includes('casual-human.glb')) head.scale.setScalar(0.84);
         if (spine) {
           const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.0125, 0.0135, 0.037, 16), mat(player.role === 'GK' ? '#d4ae48' : team.color));
@@ -364,7 +366,7 @@
         if (run) run.setEffectiveWeight(0);
         if (jump) jump.setEffectiveWeight(0);
         mesh.userData.body.visible = false; mesh.add(actor);
-        characterAnimation[i] = { actor, mixer, idle, run, jump, leftLeg, rightLeg, leftArm, rightArm };
+        characterAnimation[i] = { actor, mixer, idle, run, jump, leftLeg, rightLeg, leftArm, rightArm, leftLower, rightLower };
       });
     }, undefined, (error) => {
       if (index < candidates.length - 1) loadPlayerModel(index + 1);
@@ -397,14 +399,36 @@
   }
   addEventListener('resize', resize); resize();
 
+  // Kaleci dalışı: kollar vücudun "yukarı" yönüne (uçuş yönüne) düz uzanır.
+  const _Y = new THREE.Vector3(0, 1, 0), _v = new THREE.Vector3(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _id = new THREE.Quaternion(), _hand = new THREE.Vector3();
+  function reachArms(m, a, w) {
+    m.updateMatrixWorld(true); m.getWorldQuaternion(_q1);
+    [[a.leftArm, a.leftLower, -1], [a.rightArm, a.rightLower, 1]].forEach((it) => {
+      const arm = it[0], lower = it[1];
+      if (!arm || !arm.parent) return;
+      _v.set(0.12, 1, it[2] * 0.14).normalize().applyQuaternion(_q1);
+      arm.parent.getWorldQuaternion(_q2).invert(); _v.applyQuaternion(_q2);
+      _q2.setFromUnitVectors(_Y, _v); arm.quaternion.slerp(_q2, w);
+      if (lower) lower.quaternion.slerp(_id, w);
+    });
+  }
+  let holdW = 0;
   let camX = 0, camY = 34, camZ = 50, orbit = 0, tAnim = 0;
   function frame(dt) {
     tAnim += dt;
     const B = game.ball;
     game.players.forEach((p, i) => {
-      const m = meshes[i], sp = Math.hypot(p.vx, p.vz), dive = p.role === 'GK' && p.diveT > 0 ? Math.sin((1 - p.diveT / 0.58) * Math.PI) : 0;
+      const m = meshes[i], sp = Math.hypot(p.vx, p.vz);
+      const dur = p.diveDur || 0.9, pr = p.diveT > 0 ? 1 - p.diveT / dur : 0;
+      const e0 = p.role === 'GK' && p.diveT > 0 ? clamp(Math.min(pr / 0.2, (1 - pr) / 0.3, 1), 0, 1) : 0;
+      const dive = e0 * e0 * (3 - 2 * e0); diveEnv[i] = dive;
       const slide = p.slideT > 0 ? Math.sin((1 - p.slideT / p.slideDuration) * Math.PI) : 0;
-      m.position.set(p.x, dive * 0.5 - slide * 0.14, p.z); m.rotation.y = -p.face;
+      const tr = p.diveTilt === undefined ? 1 : p.diveTilt, lift = p.diveLift || 0, tilt = dive * tr * 1.45, cH = 1.5;
+      const side = (Math.cos(p.face) >= 0 ? 1 : -1) * (p.diveSide >= 0 ? 1 : -1);
+      const hc = cH + dive * ((1 - tr) * (0.35 + lift * 0.8) + tr * (0.5 + lift * 1.1 - cH));
+      const zOff = side * (dive * tr * 0.5 - cH * Math.sin(tilt));
+      m.position.set(p.x - zOff * Math.sin(p.face), hc - cH * Math.cos(tilt) - slide * 0.14, p.z + zOff * Math.cos(p.face));
+      m.rotation.y = -p.face; m.rotation.x = side * tilt;
       const run = Math.min(1, sp / 3.6), stride = Math.sin(tAnim * (8 + run * 5) + i * 0.8) * run;
       const limbs = m.userData.limbs;
       const kick = p.kickT > 0 ? Math.sin((1 - p.kickT / 0.42) * Math.PI) : 0, kickingLeg = p.kickSide;
@@ -415,12 +439,12 @@
       limbs.arms[0].rotation.z = -stride * 0.52 - (kickingLeg === 1 ? kick * 0.28 : 0);
       limbs.arms[1].rotation.z = stride * 0.52 - (kickingLeg === 0 ? kick * 0.28 : 0);
       m.userData.body.rotation.z = -0.06 * run + kick * 0.11 - slide * 0.8;
-      m.userData.body.rotation.x = -p.diveSide * dive * 0.72;
+      m.userData.body.rotation.x = 0;
       if (p.role === 'GK') { limbs.arms[0].rotation.z -= dive * 0.65; limbs.arms[1].rotation.z += dive * 0.65; }
       m.userData.body.position.y = Math.sin(tAnim * 2 + i) * 0.012;
       const animation = characterAnimation[i];
       if (animation) {
-        const motion = Math.min(1, sp / 3.2), jumping = p.role === 'GK' ? dive : 0;
+        const motion = Math.min(1, sp / 3.2), jumping = p.role === 'GK' ? dive * 0.7 : 0;
         if (animation.idle) animation.idle.setEffectiveWeight((1 - Math.max(motion, slide)) * (1 - jumping));
         if (animation.run) { animation.run.setEffectiveWeight(Math.max(motion, slide * 0.8) * (1 - jumping)); animation.run.setEffectiveTimeScale(clamp(0.7 + sp * 0.16, 0.7, 2.2)); }
         if (animation.jump) animation.jump.setEffectiveWeight(jumping);
@@ -431,6 +455,7 @@
         if (animation.rightArm) animation.rightArm.rotation.z += armLift;
         const kickLeg = p.kickSide === 0 ? animation.leftLeg : animation.rightLeg;
         if (kickLeg && kick > 0) kickLeg.rotation.x += kick * 1.2;
+        if (dive > 0.02) reachArms(m, animation, dive);
       }
       const labelNearPlay = Math.hypot(p.x - B.x, p.z - B.z) < 17;
       const isControlled = game.human[p.team] && game.ctrl[p.team] === p;
@@ -441,6 +466,13 @@
       r.visible = !!c; if (c) r.position.set(c.x, 0.06, c.z);
     });
     ballMesh.position.set(B.x, B.y, B.z); ballMesh.rotation.z -= B.vx * dt / ballRadius; ballMesh.rotation.x += B.vz * dt / ballRadius;
+    const holder = B.owner && B.owner.role === 'GK' ? B.owner : (shoot && shoot.k && shoot.k.hold ? shoot.k.keeper : null);
+    const hi = holder ? game.players.indexOf(holder) : -1;
+    holdW += ((hi >= 0 ? diveEnv[hi] : 0) - holdW) * Math.min(1, 16 * dt);
+    if (hi >= 0 && holdW > 0.01) {   // dalışta top kalecinin avuçlarında
+      meshes[hi].updateMatrixWorld(true); meshes[hi].localToWorld(_hand.set(0.1, 2.75, 0));
+      ballMesh.position.set(B.x + (_hand.x - B.x) * holdW, B.y + (_hand.y - B.y) * holdW, B.z + (_hand.z - B.z) * holdW);
+    }
     ballShadow.position.x = B.x; ballShadow.position.z = B.z;
     ballShadow.scale.setScalar(1 + Math.max(0, B.y - ballRadius) * 0.1);
     ballShadowMat.opacity = clamp(0.24 - Math.max(0, B.y - ballRadius) * 0.025, 0.06, 0.24);
@@ -651,7 +683,13 @@
   }
   function keeperStep(k) {
     const gk = k.keeper, R = k.R;
-    if (k.t1 > 0 && !k.dived) { k.dived = true; gk.diveT = 0.58; gk.diveSide = Math.sign(R.K.x * k.dir) || 1; }
+    if (k.t1 > 0 && !k.dived) {
+      k.dived = true;
+      if (Math.hypot(R.K.x, R.K.y - 0.35) > 0.2) {
+        gk.diveDur = Math.max(1.1, R.dur + 0.75); gk.diveT = gk.diveDur; gk.diveSide = Math.sign(R.K.x * k.dir) || 1;
+        gk.diveTilt = clamp(Math.abs(R.K.x) / 0.5, 0, 1); gk.diveLift = clamp(R.K.y / 0.9, 0, 1);
+      }
+    }
     if (k.dived) gk.z = k.dir * R.K.x * PGW * clamp((k.t1 - 0.1) / R.dur, 0, 1);
   }
   function shootStep(dt) {
@@ -662,6 +700,7 @@
     const B = game.ball;
     if (s.st === 'result') {
       k.t1 += dt; keeperStep(k); ballFree(dt);
+      if (k.hold) { const g = k.keeper; B.x = g.x + Math.cos(g.face) * 0.8; B.y = 1.2; B.z = g.z + Math.sin(g.face) * 0.8; B.vx = B.vz = B.vy = 0; }
       if (s.t > 2.8) { if (s.S.done) { s.k = null; onGameEvent('end', { score: s.S.score.slice() }); } else nextKick(); }
       return;
     }
@@ -681,6 +720,7 @@
       : r === 'miss' ? { x: vx * 0.5, y: 2, z: vz * 0.4 }
       : r === 'save' ? { x: -dir * 3, y: 3.5, z: (Math.random() - 0.5) * 8 }
       : { x: -dir * 7, y: 3.5, z: Math.sign(R.tx || 1) * dir * 2 };
+    if (r === 'save') { k.hold = true; k.bv = null; }
     s.st = 'result'; s.t = 0; s.S.record(r);
     banner(RES_TXT[r] + '<small>' + scoreTxt() + '</small>', 2400);
     if (r === 'goal') { snd('goal'); both({ t: 'vib', ms: [200, 80, 200] }); } else { snd('kick'); both({ t: 'vib', ms: 90 }); }
