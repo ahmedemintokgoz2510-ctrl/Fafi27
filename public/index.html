@@ -63,6 +63,13 @@
   #hud .bar{width:.45rem}
   #hud .sc{display:flex;align-items:center;gap:.8rem;padding:0 1.2rem;font-size:2.6rem;font-weight:700;background:rgba(236,232,220,.08)}
   #hud .clock{display:flex;align-items:center;padding:0 1.1rem;font-size:1.7rem;color:var(--brass);min-width:5.2rem;justify-content:center;border-left:1px solid var(--line)}
+  #penDots{position:fixed;top:10.5vh;left:50%;transform:translateX(-50%);display:none;flex-direction:column;gap:.15rem;background:rgba(12,20,15,.78);border:1px solid var(--line);border-radius:6px;padding:.35rem .8rem;font-family:var(--display);font-size:1.1rem}
+  #penDots.on{display:flex}
+  #penDots div{display:flex;align-items:center;gap:.5rem}
+  #penDots b{width:2.6rem;font-weight:600;color:var(--muted)}
+  #penDots i{font-style:normal;width:1rem;text-align:center;color:var(--muted)}
+  #penDots i.g{color:var(--chalk)}
+  #penDots i.m{color:#a8554b}
   #sndHud{position:fixed;right:1.2vw;top:1.4vh;display:none;padding:.4em .9em;font-size:.9rem}
   #sndHud.on{display:block}
   #banner{position:fixed;left:0;right:0;top:34%;text-align:center;font-family:var(--display);font-weight:700;font-size:clamp(4rem,10vw,9rem);
@@ -83,6 +90,7 @@
     <h1 class="title">FAFİ 27</h1>
     <p class="tag">Akıllı tahtada maç, telefonlar gamepad. İki oyuncu, bir saha.</p>
     <button id="playBtn" class="primary play">Oyna</button>
+    <button id="penModeBtn" class="play" style="margin-left:1rem">Penaltı Atışları</button>
     <div class="opts">
       <div class="grp"><span>Maç süresi</span><span id="durs"></span></div>
       <button id="sndBtn">Ses: Açık</button>
@@ -109,6 +117,7 @@
   <div class="t"><span class="team-meta"><span id="tn1"></span><small class="active-player" id="active1"></small></span><img id="logo1" alt="" hidden></div><div class="bar" id="bar1"></div>
   <div class="clock" id="clock">00:00</div>
 </div>
+<div id="penDots"></div>
 <button id="sndHud">Ses: Açık</button>
 <div id="banner"></div>
 

@@ -64,7 +64,16 @@
   #throughCharge{position:absolute;left:24%;right:24%;bottom:19%;height:4px;background:rgba(15,26,20,.8);border-radius:999px;overflow:hidden;pointer-events:none}
   #slideCharge{position:absolute;left:24%;right:24%;bottom:19%;height:4px;background:rgba(15,26,20,.8);border-radius:999px;overflow:hidden;pointer-events:none}
   #rotate{position:fixed;inset:0;z-index:5;background:var(--bg);display:none;align-items:center;justify-content:center;text-align:center;padding:2rem;font-size:1.2rem;color:var(--muted)}
-  @media (orientation:portrait){#pad.on ~ #rotate{display:flex}}
+  @media (orientation:portrait){#pad.on ~ #rotate,#pen.on ~ #rotate{display:flex}}
+  /* penaltı */
+  #pen{position:fixed;inset:0;display:none;background:var(--bg)}
+  #pen.on{display:block}
+  #penCv{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+  #penTop{position:absolute;top:calc(env(safe-area-inset-top) + .5rem);left:1rem;right:1rem;display:flex;justify-content:space-between;font-family:var(--display);font-size:1.15rem;letter-spacing:.04em;pointer-events:none}
+  #penScore{color:var(--brass)}
+  #penMsg{position:absolute;top:calc(env(safe-area-inset-top) + 2.4rem);left:1rem;right:1rem;text-align:center;color:var(--muted);font-size:.85rem;pointer-events:none}
+  #penGate{position:absolute;left:50%;top:55%;transform:translate(-50%,-50%);display:none;font-family:var(--display);font-size:1.6rem;padding:.7rem 1.8rem}
+  #penLock,#penReady{position:absolute;right:calc(env(safe-area-inset-right) + 1rem);bottom:calc(env(safe-area-inset-bottom) + .8rem);display:none;font-family:var(--display);font-size:1.3rem;padding:.55rem 1.4rem}
 </style>
 </head>
 <body>
@@ -102,6 +111,14 @@
   </div>
   <button id="layoutReset" type="button" aria-label="Buton konumlarını varsayılana döndür">SIFIRLA</button>
   <button id="layoutToggle" type="button" aria-label="Buton konumlarını düzenle">DÜZEN</button>
+</div>
+<div id="pen">
+  <canvas id="penCv"></canvas>
+  <div id="penTop"><span id="penWho"></span><span id="penScore"></span></div>
+  <div id="penMsg"></div>
+  <button id="penGate" class="primary" type="button">PENALTİ MODUNA GEÇ</button>
+  <button id="penLock" class="primary" type="button">GÜCÜ SABİTLE</button>
+  <button id="penReady" class="primary" type="button">HAZIR</button>
 </div>
 <div id="rotate">Telefonu yatay çevir</div>
 
