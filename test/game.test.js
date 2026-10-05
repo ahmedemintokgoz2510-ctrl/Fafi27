@@ -328,3 +328,89 @@ test('AI keeper dives sideways at a shot to the corner and the dive finishes aft
   for (let i = 0; i < 120; i++) game.update(1 / 60);
   assert.equal(gk.diveT, 0);
 });
+
+test('ball radius is small relative to a ~2 m player', () => {
+  const game = createGame(cfg, () => {});
+  assert.ok(game.BR <= 0.25);
+  game.start(3, [false, false]);
+  assert.equal(game.ball.y, game.BR);
+});
+
+test('ball over the goal line (attacker last touch) gives the keeper a goal kick', () => {
+  const game = createGame(cfg, () => {});
+  game.start(3, [false, false]);
+  game.state = 'play';
+  game.ball.owner = null; game.ball.x = game.HL + 0.2; game.ball.z = game.HW - 5;
+  game.ball.vx = game.ball.vy = game.ball.vz = 0; game.ball.last = 0;
+
+  game.update(0.01);
+
+  assert.equal(game.state, 'goalkick');
+  assert.equal(game.ball.owner.role, 'GK');
+  assert.equal(game.ball.owner.team, 1);
+  assert.ok(game.ball.y < 0.5);
+});
+
+test('human goal kick waits for the finger drag, then kicks along the drag direction with drag power', () => {
+  const kick = (power) => {
+    const events = [];
+    const game = createGame(cfg, (type) => events.push(type));
+    game.start(3, [true, true]);
+    game.state = 'play';
+    game.awardGoalKick(0, -1);
+    for (let i = 0; i < 10; i++) game.update(0.05);
+    assert.equal(game.state, 'goalkick', 'must wait for the human');
+    assert.ok(game.restartKick(0, 1, 0, power));
+    assert.equal(game.state, 'play');
+    assert.ok(events.includes('restartEnd'));
+    return game.ball;
+  };
+  const soft = kick(0.2), hard = kick(1);
+  assert.ok(soft.vx > 0 && Math.abs(soft.vz) < 1);
+  assert.ok(hard.vx > soft.vx);
+});
+
+test('throw-in is a real throw: a tap-length drag stays short, never rocket speed', () => {
+  const game = createGame(cfg, () => {});
+  game.start(3, [true, true]);
+  game.state = 'play';
+  game.awardThrowIn(0, 0, game.HW);
+  assert.equal(game.state, 'throwin');
+  assert.ok(game.restartKick(0, 0, -1, 0));
+  const speed = Math.hypot(game.ball.vx, game.ball.vz);
+  assert.ok(speed <= 10, 'speed ' + speed);
+  // outward drag is turned back into the pitch
+  const g2 = createGame(cfg, () => {});
+  g2.start(3, [true, true]); g2.state = 'play';
+  g2.awardThrowIn(0, 0, g2.HW);
+  g2.restartKick(0, 0, 1, 1);
+  assert.ok(g2.ball.vz < 0);
+  assert.ok(Math.hypot(g2.ball.vx, g2.ball.vz) <= 22.5);
+});
+
+test('only the team with the restart can kick; defender input is ignored', () => {
+  const game = createGame(cfg, () => {});
+  game.start(3, [true, true]);
+  game.state = 'play';
+  game.awardGoalKick(0, -1);
+  assert.equal(game.restartKick(1, 1, 0, 1), false);
+  assert.equal(game.state, 'goalkick');
+});
+
+test('human keeper who holds the ball can distribute it with the same drag', () => {
+  const events = [];
+  const game = createGame(cfg, (type) => events.push(type));
+  game.start(3, [true, false]);
+  game.state = 'play';
+  const gk = game.teams[0][0];
+  gk.x = -47; gk.z = 0; gk.noGrab = 0;
+  game.ball.owner = null; game.ball.x = -46.5; game.ball.y = 1.5; game.ball.z = 0;
+  game.ball.vx = 1; game.ball.vy = 0; game.ball.vz = 0; game.ball.last = 1;
+  const orig = Math.random; Math.random = () => 0;
+  try { game.update(0.01); } finally { Math.random = orig; }
+  assert.equal(game.ball.owner, gk);
+  assert.ok(events.includes('gkhold'));
+  assert.ok(game.restartKick(0, 1, 0.3, 0.7));
+  assert.equal(game.ball.owner, null);
+  assert.ok(game.ball.vx > 10);
+});
