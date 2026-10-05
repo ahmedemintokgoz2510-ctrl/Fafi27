@@ -17,6 +17,9 @@
       input: [{ x: 0, z: 0, charge: -1, sprint: false, pressure: false }, { x: 0, z: 0, charge: -1, sprint: false, pressure: false }], autoLock: [0, 0], conceded: 0, pressers: [[], []]
     };
 
+    // Kalecinin kendi ceza sahası (16.5 x 40.3). Eliyle yalnızca burada oynayabilir.
+    function inOwnBox(gk, x, z) { return Math.abs(x + gk.dir * HL) < 16.5 && Math.abs(z) < 20.15; }
+
     function mkPlayers() {
       G.players = []; G.teams = [[], []];
       for (let t = 0; t < 2; t++) {
@@ -192,24 +195,55 @@
       B.target = receiver; B.offside = receiver ? isOffsideAtPass(p, receiver) : false;
     }
 
-    function doShoot(p, charge, ai, loft = false) {
+    // PES tarzı şut: yön çubuğu direklere göre nişan alır (yardımlı), basılı tutma gücü belirler,
+    // yukarı kaydırma (loft) falsolu/aşırtma şut verir. Fazla şarj (>%88) topu üste yollar.
+    function aimAtGoal(p, ax, az, strength = 0.85) {
+      const goalX = p.dir * HL, gdx = goalX - p.x, gdz = -p.z, gd = Math.hypot(gdx, gdz) || 1;
+      const toGoal = (ax * gdx + az * gdz) / gd;
+      if (toGoal > 0.35 && gd < 48 && ax * p.dir > 0.05) {
+        const zHit = p.z + az * (gdx / ax);
+        if (Math.abs(zHit) < GW + 7) {
+          const tz = clamp(zHit, -(GW - 0.9), GW - 0.9), w = clamp((toGoal - 0.35) / 0.45, 0, 1) * strength;
+          const nx = gdx, nz = tz - p.z, nl = Math.hypot(nx, nz) || 1;
+          ax = ax * (1 - w) + nx / nl * w; az = az * (1 - w) + nz / nl * w;
+        }
+      }
+      return [ax, az, gd];
+    }
+
+    function doShoot(p, charge, ai, loft = false, acro = false) {
       const goalX = p.dir * HL;
       let ax, az;
-      if (ai) { ax = goalX - p.x; az = rand(-2.8, 2.8) - p.z; }
+      if (ai) { ax = goalX - p.x; az = rand(-(GW - 0.8), GW - 0.8) - p.z; }
       else {
         const i = G.input[p.team]; ax = i.x; az = i.z;
         let m = Math.hypot(ax, az);
         if (m < 0.3) { ax = Math.cos(p.face); az = Math.sin(p.face); m = 1; }
         ax /= m; az /= m;
-        const gx = goalX - p.x, gz = -p.z, gn = Math.hypot(gx, gz) || 1;
-        if ((ax * gx + az * gz) / gn > 0.6) { ax = ax * 0.3 + (gx / gn) * 0.7; az = az * 0.3 + (gz / gn) * 0.7; }
       }
-      const air = loft || (!ai && charge > 0.5);
+      let gd;
+      if (!ai) [ax, az, gd] = aimAtGoal(p, ax, az); else gd = Math.hypot(goalX - p.x, p.z);
+      const air = loft;
+      const over = Math.max(0, charge - 0.88) / 0.12;
       const shotPower = 1 + (p.shooting - 72) * 0.012 + (p.power - 72) * 0.008;
-      const aimError = (0.03 + 0.06 * charge) * clamp(1.45 - p.shooting / 100, 0.35, 1.05);
-      const curve = clamp(Math.cos(p.face) * az - Math.sin(p.face) * ax, -1, 1) * (0.7 + p.shooting / 100);
-      kick(p, ax, az, (air ? 20 + 14 * charge : 24 + 22 * charge) * shotPower, aimError, air ? 4 + charge * 7 : 0, curve);
+      const farPenalty = 1 + Math.max(0, gd - 26) / 55;
+      const aimError = (0.02 + 0.04 * charge + 0.07 * over) * clamp(1.45 - p.shooting / 100, 0.35, 1.05) * farPenalty * (acro ? 1.5 : 1);
+      const baseSpeed = air ? 21 + 14 * charge : 27 + 25 * charge;
+      const curve = clamp(Math.cos(p.face) * az - Math.sin(p.face) * ax, -1, 1) * (0.7 + p.shooting / 100) * (air ? 1.8 : 1.2);
+      const lift = air ? 5.5 + charge * 4.5 : 0.7 + charge * 1.7 + over * 6;
+      kick(p, ax, az, baseSpeed * shotPower * (acro ? 1.08 : 1), aimError, lift, curve);
       p.shootCd = 1;
+      if (acro) { p.acroT = 0.8; p.kickT = 0.5; emit('acro', { team: p.team, player: p.number }); }
+    }
+
+    // Havadaki/yerdeki serbest topa ilk vuruş (vole, röveşata): şut tuşuna basınca top yakındaysa
+    function tryVolley(p) {
+      if (B.owner || p.shootCd > 0 || p.noGrab > 0 || p.slideT > 0) return false;
+      if (dist(p, B) > 2.7 || B.y > 3.1) return false;
+      if (Math.hypot(B.vx, B.vz) > 38) return false;
+      const high = B.y > 1.5;
+      doShoot(p, high ? 0.82 : 0.7, false, false, high);
+      return true;
     }
 
     G.press = function (t, btn, down, options = {}) {
@@ -256,7 +290,7 @@
       }
       else if (btn === 'through') { if (down || B.owner !== p) return; doThrough(p, inp.x, inp.z, clamp(Number(options.hold) || 0, 0, 1.2) / 1.2); }
       else if (btn === 'shoot') {
-        if (down) { if (B.owner === p) inp.charge = 0; }
+        if (down) { if (B.owner === p) inp.charge = 0; else tryVolley(p); }
         else { if (inp.charge >= 0 && B.owner === p) doShoot(p, inp.charge, false, !!options.loft); inp.charge = -1; }
       } else if (btn === 'slide') {
         if (down || p.slideCooldown > 0 || p.slideT > 0 || B.owner === p) return;
@@ -336,7 +370,7 @@
       const chasesBall = inp.pressure && (!B.owner || B.owner.team !== p.team);
       const canSprint = inp.sprint && p.stamina > 0.08;
       const paceFactor = 0.82 + (p.pace / 100) * 0.46;
-      const sp = 12.5 * paceFactor * (canSprint ? 1.45 : chasesBall ? 1.15 : 1) * (B.owner === p ? 0.92 : 1) * (inp.charge >= 0 ? 0.7 : 1) * (0.82 + 0.18 * p.stamina) * (p.burstT > 0 ? 1.18 : 1);
+      const sp = 6.4 * paceFactor * (canSprint ? 1.42 : chasesBall ? 1.1 : 1) * (B.owner === p ? 0.92 : 1) * (inp.charge >= 0 ? 0.7 : 1) * (0.82 + 0.18 * p.stamina) * (p.burstT > 0 ? 1.15 : 1);
       p.stamina = clamp(p.stamina + (canSprint && m > 0.12 ? -0.1 : !inp.sprint ? 0.04 : 0) * dt, 0, 1);
       if (chasesBall) {
         const tx = B.x + B.vx * 0.18 - p.x, tz = B.z + B.vz * 0.18 - p.z;
@@ -351,31 +385,33 @@
 
     function aiStep(p, dt) {
       const dir = p.dir, own = B.owner, hasBall = own === p, teamHas = own && own.team === p.team;
-      let tx = p.x, tz = p.z, sp = 9.4 * (0.84 + (p.pace / 100) * 0.38);
-      if (p.runT > 0 && !hasBall && p.role !== 'GK') { p.runT -= dt; moveTo(p, p.rx, p.rz, 11.8 * (0.84 + (p.pace / 100) * 0.38), dt); return; }
+      const pf = (0.84 + (p.pace / 100) * 0.38) / 1.14; // oyuncuya özel hız çarpanı
+      let tx = p.x, tz = p.z, sp = 6.0;
+      if (p.runT > 0 && !hasBall && p.role !== 'GK') { p.runT -= dt; moveTo(p, p.rx, p.rz, 7.6 * pf, dt); return; }
       if (p.role === 'GK') {
         const gx = -dir * HL;
-        tx = gx + dir * 2; tz = clamp(B.z * 0.3, -GW + 0.7, GW - 0.7); sp = 8;
+        const away = Math.max(2, (B.x - gx) * dir);
+        tx = gx + dir * clamp(1 + away * 0.06, 1.2, 4.2); tz = clamp(B.z * clamp(GW / Math.max(away, 8) * 1.6, 0.2, 0.55), -GW + 0.6, GW - 0.6); sp = 5.5;
         if (hasBall) {
           tx = p.x; tz = p.z; sp = 0;
           if (B.ownT > 0.9 && !doPass(p, dir, 0, true)) kick(p, dir, 0, 28, 0.05);
         } else if (B.vx * dir < -5) {
           const t = (gx - B.x) / B.vx;
           if (t < 1.6) {
-            tz = clamp(B.z + B.vz * t, -GW - 1.5, GW + 1.5); tx = gx + dir * 1.4; sp = 10.5;
+            tz = clamp(B.z + B.vz * t, -GW - 2, GW + 2); tx = gx + dir * 1.4; sp = 8.5;
             // yan köşeye giden şutta kaleci yatay uçar
             const lat = tz - p.z;
-            if (p.diveT <= 0 && !own && t > 0.05 && t < 0.6 && Math.abs(lat) > 1.1 && Math.hypot(B.vx, B.vz) > 11) {
+            if (p.diveT <= 0 && !own && t > 0.05 && t < 0.7 && Math.abs(lat) > 0.9 && Math.hypot(B.vx, B.vz) > 9) {
               p.diveT = p.diveDur = 0.9; p.diveSide = Math.sign(lat) || 1; p.diveTilt = clamp(Math.abs(lat) / 2.4, 0.45, 1);
               const by = B.y + B.vy * t - 9.5 * t * t; p.diveLift = clamp((by - 0.5) / 2, 0, 0.9);
             }
-            if (p.diveT > 0.15) sp = 16;
+            if (p.diveT > 0.15) sp = 12;
           }
         } else if (!own && B.y > 1 && B.vy < 0 && Math.abs(B.x - gx) < 18 && Math.abs(B.z) < 19) {
           const t = clamp((B.y - 1.2) / -B.vy, 0, 1.1);
           tx = gx + dir * clamp((B.x + B.vx * t - gx) * dir, 1.4, 14);
-          tz = clamp(B.z + B.vz * t, -GW - 1.2, GW + 1.2); sp = 9.5;
-        } else if (!own && Math.hypot(B.x - gx, B.z) < 15 && Math.hypot(B.vx, B.vz) < 9) { tx = B.x; tz = B.z; sp = 10; }
+          tz = clamp(B.z + B.vz * t, -GW - 1.2, GW + 1.2); sp = 7;
+        } else if (!own && Math.hypot(B.x - gx, B.z) < 15 && Math.hypot(B.vx, B.vz) < 9) { tx = B.x; tz = B.z; sp = 7.5; }
       } else if (hasBall) {
         const goalX = dir * HL, dg = Math.hypot(goalX - p.x, p.z);
         let near = 1e9;
@@ -385,21 +421,22 @@
           doShoot(p, clamp((27 - dg) / 24 + (p.shooting - 70) / 250, 0.2, 0.9), true); return;
         }
         if (B.ownT > 0.45 + p.bias && (near < 4.5 || B.ownT > 2.3 + p.bias) && doPass(p, dir, 0, true)) return;
-        tx = goalX; tz = clamp(p.z * 0.5, -12, 12); sp = 9.8;
+        tx = goalX; tz = clamp(p.z * 0.5, -12, 12); sp = 6.4;
       } else if (G.chaser[p.team] === p || G.pressers[p.team].includes(p)) {
-        tx = B.x + B.vx * 0.25; tz = B.z + B.vz * 0.25; sp = 10.6;
+        tx = B.x + B.vx * 0.25; tz = B.z + B.vz * 0.25; sp = 7.0;
       } else {
         const prog = B.x * dir, k = p.role === 'DF' ? 0.35 : p.role === 'MF' ? 0.55 : 0.75;
         const depth = teamHas ? p.role === 'DF' ? -7 : p.role === 'MF' ? 1.5 : 7 : 0;
         tx = clamp(p.hx + dir * (prog * k + depth), -HL + 4, HL - 4);
         tz = p.hz * 0.84 + B.z * 0.16;
       }
-      moveTo(p, tx, tz, sp, dt);
+      if (p.role === 'GK') { const gl = -dir * HL, depth = clamp((tx - gl) * dir, 0.4, 15.5); tx = gl + dir * depth; tz = clamp(tz, -19, 19); }
+      moveTo(p, tx, tz, p.role === 'GK' ? sp : sp * pf, dt);
       if (!hasBall) turn(p, Math.atan2(B.z - p.z, B.x - p.x), dt, 6);
     }
 
     function slideStep(p, dt) {
-      const speed = (9 + p.slidePower * 9) * Math.max(0.3, p.slideT / p.slideDuration);
+      const speed = (6.5 + p.slidePower * 6) * Math.max(0.3, p.slideT / p.slideDuration);
       p.vx = p.slideX * speed; p.vz = p.slideZ * speed;
       turn(p, Math.atan2(p.slideZ, p.slideX), dt, 24);
       p.slideT = Math.max(0, p.slideT - dt);
@@ -412,12 +449,17 @@
         chaserFor(t);
       }
       for (const p of G.players) {
+        p.px = p.x; p.pz = p.z; p.acroT = Math.max(0, (p.acroT || 0) - dt);
         p.noGrab -= dt; p.protect -= dt; p.shootCd -= dt; p.kickT = Math.max(0, p.kickT - dt); p.diveT = Math.max(0, p.diveT - dt);
         p.slideCooldown = Math.max(0, p.slideCooldown - dt); p.burstT = Math.max(0, p.burstT - dt);
         if (p.slideT > 0) slideStep(p, dt);
         else if (G.human[p.team] && G.ctrl[p.team] === p) humanStep(p, dt); else aiStep(p, dt);
         p.x = clamp(p.x + p.vx * dt, -HL - 1.5, HL + 1.5);
         p.z = clamp(p.z + p.vz * dt, -HW - 1.5, HW + 1.5);
+        if (p.role === 'GK' && B.owner === p && inOwnBox(p, p.px, p.pz) && !inOwnBox(p, p.x, p.z)) {
+          const gl = -p.dir * HL; // topu elindeyken ceza sahasından çıkamaz
+          p.x = gl + p.dir * clamp((p.x - gl) * p.dir, 0.3, 16.2); p.z = clamp(p.z, -20, 20); p.vx = p.vz = 0;
+        }
       }
       for (const tackler of G.players) {
         if (tackler.slideT <= 0 || tackler.slideResolved) continue;
@@ -469,12 +511,44 @@
     function checkBounds() {
       if (Math.abs(B.x) > HL) {
         const side = B.x > 0 ? 1 : -1, att = side === 1 ? 0 : 1, def = 1 - att;
-        if (Math.abs(B.z) < GW && B.y < 2.5) return goal(att);
+        if (Math.hypot(B.vx, B.vz) > 6 && B.y < 2.8 && (Math.abs(Math.abs(B.z) - GW) < 0.2 || (Math.abs(B.z) < GW && B.y >= 2.15))) {
+          B.x = side * (HL - 0.3); B.vx = -B.vx * 0.45; B.vz *= 0.6; if (B.vy > 0) B.vy = -B.vy * 0.4; emit('post'); return;
+        }
+        if (Math.abs(B.z) < GW && B.y < 2.15) return goal(att);
         if (B.last === att) placeRestart(G.teams[def][0], side * (HL - 6), 0, side === 1 ? Math.PI : 0);
         else G.awardCorner(att, side, B.z);
       } else if (Math.abs(B.z) > HW) {
         const sz = B.z > 0 ? 1 : -1, team = 1 - B.last, x = clamp(B.x, -HL + 3, HL - 3);
         G.awardThrowIn(team, x, sz * HW);
+      }
+    }
+
+    // Kaleci müdahalesi: sadece kendi ceza sahasında elle oynar. Şutun hızı, mesafe ve kaleci
+    // statına göre tutar, yumruklar/çıkarır ya da kaçırır.
+    function keeperContact(spd) {
+      for (const gk of [G.teams[0][0], G.teams[1][0]]) {
+        if (gk.noGrab > 0 || B.y > 3.3 || !inOwnBox(gk, B.x, B.z) || !inOwnBox(gk, gk.x, gk.z)) continue;
+        const dh = Math.hypot(gk.x - B.x, gk.z - B.z);
+        const diving = gk.diveT > 0.15 && gk.diveT < gk.diveDur * 0.85;
+        const reach = diving ? 3.0 + (gk.diveLift || 0) * 0.5 : B.y > 1.6 ? 2.3 : 1.9;
+        if (dh > reach || !(B.vx * gk.dir < -1 || spd < 3)) continue;
+        const hold = () => { B.owner = gk; B.target = null; B.y = 1.2; B.vx = B.vy = B.vz = 0; B.spin = 0; B.ownT = 0; gk.protect = 0.65; B.last = gk.team; };
+        if (spd < 3) { hold(); emit('save', { team: gk.team, caught: true }); break; }
+        if (!diving && spd > 8) {
+          gk.diveT = gk.diveDur = 0.9; gk.diveSide = Math.sign(B.z - gk.z) || 1;
+          gk.diveTilt = clamp(Math.abs(B.z - gk.z) / 2.4, 0.2, 1); gk.diveLift = clamp((B.y - 0.8) / 2.6, 0.2, 1);
+        }
+        const chance = clamp(0.93 - Math.max(0, spd - 12) * 0.017 - (dh / reach) * 0.22 + (gk.defending - 72) * 0.004, 0.18, 0.96);
+        if (Math.random() < chance) {
+          if (spd < 15 + (gk.defending - 70) * 0.15 && B.y < 2.6) { hold(); emit('save', { team: gk.team, high: B.y > 1.2, caught: true }); }
+          else { // yumruk / çıkarma: top yana ve ileri sekerek kaleden uzaklaşır
+            const side = Math.sign(B.z - gk.z) || (B.z >= 0 ? 1 : -1);
+            B.vx = gk.dir * rand(6, 11); B.vz = side * rand(5, 12); B.vy = rand(1.5, 4.5); B.spin = 0;
+            B.target = null; B.owner = null; B.last = gk.team; gk.noGrab = 0.6;
+            emit('save', { team: gk.team, high: B.y > 1.2, caught: false });
+          }
+        } else gk.noGrab = 0.45; // kaçırdı: top geçer
+        break;
       }
     }
 
@@ -487,11 +561,11 @@
         const sprinting = human && input.sprint && o.stamina > 0.08, closeControl = human && !sprinting && Math.hypot(input.x, input.z) < 0.5;
         o.touchPhase += dt * (2.2 + speed * 0.5);
         const touch = Math.abs(Math.sin(o.touchPhase));
-        const amplitude = (o.burstT > 0 ? 2.6 : sprinting ? 1.8 : closeControl ? 0.08 : 0.6) * Math.min(1, speed / 9);
+        const amplitude = (o.burstT > 0 ? 2.6 : sprinting ? 1.8 : closeControl ? 0.08 : 0.6) * Math.min(1, speed / 6);
         const lead = 0.8 + touch * amplitude, blend = Math.min(1, 22 * dt);
         B.x += (o.x + Math.cos(o.face) * lead - B.x) * blend;
         B.z += (o.z + Math.sin(o.face) * lead - B.z) * blend;
-        B.y = o.role === 'GK' ? 1.2 : 0.48; B.vx = o.vx; B.vy = 0; B.vz = o.vz;
+        B.y = o.role === 'GK' && inOwnBox(o, o.x, o.z) ? 1.2 : 0.48; B.vx = o.vx; B.vy = 0; B.vz = o.vz;
         if (o.protect <= 0) for (const opp of G.teams[1 - o.team]) {
           const pressure = G.human[opp.team] ? G.ctrl[opp.team] === opp && G.input[opp.team].pressure : true;
           const exposed = Math.max(0, lead - 1.0);
@@ -509,7 +583,7 @@
         B.x += B.vx * dt; B.z += B.vz * dt;
         B.y += B.vy * dt; B.vy -= 19 * dt;
         if (B.y < 0.48) { B.y = 0.48; B.vy = B.vy < -1.2 ? -B.vy * 0.32 : 0; }
-        const f = Math.exp(-0.8 * dt); B.vx *= f; B.vz *= f;
+        const f = Math.exp(-(B.y > 0.7 ? 0.25 : 0.8) * dt); B.vx *= f; B.vz *= f;
         B.spin *= Math.exp(-1.25 * dt);
         const spd = Math.hypot(B.vx, B.vz);
         if (spd < 0.3) B.vx = B.vz = 0;
@@ -518,28 +592,7 @@
           if (Math.abs(B.z) > GW) { B.z = Math.sign(B.z) * GW; B.vz *= -0.3; }
           return;
         }
-        for (const gk of [G.teams[0][0], G.teams[1][0]]) {
-          const goalX = -gk.dir * HL, inBox = Math.abs(B.x - goalX) < 18 && Math.abs(B.z) < 19;
-          const reach = Math.hypot(gk.x - B.x, gk.z - B.z);
-          const aimedAtGoal = B.vx * gk.dir < -1.5;
-          const descendingInReach = B.vy < 0 && reach < 3.2;
-          if (B.y > 0.95 && B.y < 4.6 && inBox && reach < 3.4 && (aimedAtGoal || descendingInReach) && gk.noGrab <= 0) {
-            gk.diveT = gk.diveDur = 0.9; gk.diveSide = Math.sign(B.z - gk.z) || 1; gk.diveTilt = clamp(Math.abs(B.z - gk.z) / 2.4, 0.2, 1); gk.diveLift = clamp((B.y - 0.8) / 2.6, 0.3, 1);
-            const catchChance = clamp(0.9 - reach * 0.14 - Math.max(0, spd - 18) * 0.006 + (gk.defending - 75) * 0.002, 0.38, 0.94);
-            if (Math.random() < catchChance) {
-              B.owner = gk; B.target = null; B.y = 1.2; B.vy = 0; B.spin = 0; B.ownT = 0; gk.protect = 0.65; B.last = gk.team;
-            } else {
-              B.vx = gk.dir * rand(8, 13); B.vz = rand(-12, 12); B.vy = Math.max(0, B.vy * 0.4); gk.noGrab = 0.7; B.last = gk.team;
-            }
-            emit('save', { team: gk.team, high: true, caught: B.owner === gk });
-            break;
-          }
-        }
-        if (!B.owner) for (const gk of [G.teams[0][0], G.teams[1][0]]) {
-          if (B.y > 2.3 || gk.noGrab > 0 || dist(gk, B) > (gk.diveT > 0.2 && gk.diveT < gk.diveDur * 0.8 ? 2.7 : 1.8) || B.vx * gk.dir >= 0 && spd > 3) continue;
-          if (spd < 28) { B.owner = gk; B.target = null; B.y = 1.2; B.vy = 0; B.ownT = 0; gk.protect = 0.4; B.last = gk.team; emit('save', { team: gk.team, caught: true }); break; }
-          B.vx = gk.dir * rand(10, 16); B.vz = rand(-12, 12); gk.noGrab = 0.5; B.last = gk.team; emit('save'); break;
-        }
+        if (!B.owner) keeperContact(spd);
         if (!B.owner && B.target && B.y < 1.2 && B.target.noGrab <= 0 && dist(B.target, B) < 1.6 && spd < 40) {
           const receiver = B.target; B.last = receiver.team; receiver.runT = 0;
           if (B.offside) {

@@ -105,8 +105,14 @@
     });
     const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
   }
-  const pitch = new THREE.Mesh(new THREE.PlaneGeometry(L, W), new THREE.MeshLambertMaterial({ map: pitchTexture() }));
+  // Hazır saha dokusu (football_court.glb içinden). Çizgiler dokunun %92.6 x %94'ünü kaplar;
+  // plane o oranda büyütülür ki çizgiler oyunun gerçek saha sınırına (L x W) otursun.
+  const pitchMat = new THREE.MeshLambertMaterial({ map: pitchTexture() });
+  const pitch = new THREE.Mesh(new THREE.PlaneGeometry(L / 0.926, W / 0.94), pitchMat);
   pitch.rotation.x = -Math.PI / 2; scene.add(pitch);
+  new THREE.TextureLoader().load('assets/textures/pitch.png', (tex) => {
+    tex.anisotropy = 8; pitchMat.map = tex; pitchMat.needsUpdate = true;
+  });
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 300), new THREE.MeshLambertMaterial({ color: '#1b3324' }));
   ground.rotation.x = -Math.PI / 2; ground.position.y = -0.05; scene.add(ground);
   const seatColors = ['#263644', '#344857', '#3f4d58', '#594743'].map((color) => new THREE.MeshLambertMaterial({ color }));
@@ -193,10 +199,12 @@
     });
     return capsule;
   }
+  // Oyuncu boyu: ~1.85 birim (1 birim = 1 m). Eskiden ~2.9 idi, saha/kale oyunculara göre küçük kalıyordu.
+  const PLAYER_SCALE = 0.76;
   function makePlayerMesh(team, player) {
     const t = CFG.teams[team], g = new THREE.Group(), body = new THREE.Group();
     const role = player.role;
-    g.scale.setScalar(1.18); g.rotation.order = 'YXZ';
+    g.scale.setScalar(PLAYER_SCALE); g.rotation.order = 'YXZ';
     const kit = role === 'GK' ? '#d4ae48' : t.color;
     const skin = player.appearance?.skin || ['#d9a884', '#b77e5d', '#8b5e46', '#e2bd9c', '#c79572', '#704a35', '#e0bc9d', '#966448'][(player.number + team * 3) % 8];
     const shortsColor = role === 'GK' ? '#273442' : (t.shortsColor || t.color);
@@ -258,7 +266,7 @@
     const labelText = '#' + player.number + ' ' + player.name;
     ctx.strokeText(labelText, 256, 72, 500); ctx.fillStyle = '#f1eee6'; ctx.fillText(labelText, 256, 72, 500);
     const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true, depthTest: false, depthWrite: false }));
-    label.position.y = 3.05; label.scale.set(4.2, 1.0, 1); label.visible = true; g.add(label);
+    label.position.y = 3.05; label.scale.set(4.2 / PLAYER_SCALE * 0.85, 1.0 / PLAYER_SCALE * 0.85, 1); label.visible = true; g.add(label);
     g.userData.nameLabel = label;
     const sh = new THREE.Mesh(shadowGeo, shadowMat); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.04; g.add(sh);
     scene.add(g); return g;
@@ -429,6 +437,7 @@
       const zOff = side * (dive * tr * 0.5 - cH * Math.sin(tilt));
       m.position.set(p.x - zOff * Math.sin(p.face), hc - cH * Math.cos(tilt) - slide * 0.14, p.z + zOff * Math.cos(p.face));
       m.rotation.y = -p.face; m.rotation.x = side * tilt;
+      if (p.acroT > 0) { const ac = Math.sin((1 - p.acroT / 0.8) * Math.PI); m.position.y += ac * 1.1; m.rotation.z = ac * 1.35; } else m.rotation.z = 0;
       const run = Math.min(1, sp / 3.6), stride = Math.sin(tAnim * (8 + run * 5) + i * 0.8) * run;
       const limbs = m.userData.limbs;
       const kick = p.kickT > 0 ? Math.sin((1 - p.kickT / 0.42) * Math.PI) : 0, kickingLeg = p.kickSide;
@@ -459,7 +468,7 @@
       }
       const labelNearPlay = Math.hypot(p.x - B.x, p.z - B.z) < 17;
       const isControlled = game.human[p.team] && game.ctrl[p.team] === p;
-      m.userData.nameLabel.visible = labelNearPlay || isControlled;
+      m.userData.nameLabel.visible = !(shoot && shoot.k) && (labelNearPlay || isControlled);
     });
     rings.forEach((r, t) => {
       const c = playing && game.human[t] ? game.ctrl[t] : null;
@@ -521,8 +530,8 @@
     });
   }
   let bannerTimer;
-  function banner(html, ms) {
-    const b = $('banner'); b.innerHTML = html; b.classList.add('on');
+  function banner(html, ms, cls) {
+    const b = $('banner'); b.innerHTML = html; b.classList.toggle('goal', cls === 'goal'); b.classList.add('on');
     clearTimeout(bannerTimer); bannerTimer = setTimeout(() => b.classList.remove('on'), ms || 1600);
   }
   function screen(id) { ['menu', 'lobby', 'end'].forEach((s) => $(s).classList.toggle('on', s === id)); }
@@ -610,6 +619,8 @@
     if (type === 'kickoff' && playing) banner(game.score[0] + ' - ' + game.score[1], 1200);
     else if (type === 'whistle') snd('whistle');
     else if (type === 'kick') snd('kick');
+    else if (type === 'post') { snd('kick'); both({ t: 'vib', ms: 70 }); }
+    else if (type === 'acro') { both({ t: 'vib', ms: [60, 40, 90] }); }
     else if (type === 'tackle') { snd('kick'); both({ t: 'vib', ms: 45 }); }
     else if (type === 'shoulder') { snd('kick'); both({ t: 'vib', ms: 55 }); }
     else if (type === 'save') { snd('kick'); if (d.caught) both({ t: 'vib', ms: 45 }); }
@@ -620,7 +631,7 @@
     else if (type === 'foul') { banner('FAUL!<small>' + CFG.teams[d.team].name + '</small>', 1800); snd('whistle'); both({ t: 'vib', ms: 130 }); }
     else if (type === 'offside') { banner('OFSAYT!<small>Serbest vuruş</small>', 1800); snd('whistle'); both({ t: 'vib', ms: 120 }); }
     else if (type === 'goal') {
-      banner('GOL!<small>' + CFG.teams[d.team].name + '</small>', 3000); snd('goal');
+      banner('GOL!<small>' + CFG.teams[d.team].name + '</small>', 2400, 'goal'); snd('goal');
       both({ t: 'vib', ms: [220, 80, 220] });
     } else if (type === 'end') {
       phase = 'end'; playing = true; snd('whistle'); crowd(false);
@@ -728,8 +739,13 @@
   }
 
   // ---------- düğmeler ----------
-  $('playBtn').onclick = () => { mode = 'match'; openLobby(); };
-  $('penModeBtn').onclick = () => { mode = 'pen'; openLobby(); };
+  // Tek dokunuşta aç: hem pointerup hem click dinlenir, çift tetiklenmeyi zaman koruması engeller.
+  let lastOpen = 0;
+  const bindMenu = (id, m) => {
+    const go = () => { const n = Date.now(); if (n - lastOpen < 800 || phase === 'lobby') return; lastOpen = n; mode = m; openLobby(); };
+    $(id).addEventListener('pointerup', go); $(id).addEventListener('click', go);
+  };
+  bindMenu('playBtn', 'match'); bindMenu('penModeBtn', 'pen');
   $('sndBtn').onclick = () => { loadAudio(); setMuted(!muted); };
   $('sndHud').onclick = () => setMuted(!muted);
   $('lobbyBack').onclick = $('toMenu').onclick = () => location.reload();
