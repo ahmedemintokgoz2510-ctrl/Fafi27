@@ -83,7 +83,7 @@
     const t = CFG.teams[myTeam] || CFG.teams[0];
     restartKind = null; $('hint').textContent = 'HAREKET'; closeAim();
     document.documentElement.style.setProperty('--team', t.color);
-    $('teamName').textContent = t.name;
+    $('teamName').textContent = t.name + ' · v3';
     setSprintState(false, false);
     show('pad');
     restoreControlLayout();
