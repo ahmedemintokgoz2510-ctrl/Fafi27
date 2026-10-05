@@ -198,3 +198,12 @@ Bu bölüm güncel durumu anlatır; yukarıdaki genel/eskimiş maddelerle çeli�
 - 2026-10-04 ek doğrulama: `npm test` 14/14 geçti; dört JS dosyasının syntax kontrolleri ve `git diff --check` temiz. İki controller tarayıcı oturumu takım seçip maça geçti. Beş CC0 ses dosyasının browser metadata decode'u başarılı; crowd 138s, goal cheer 8s. İsim etiketleri topa yakın oyuncular/kontrolcü oyuncusu için küçük ve çerçevesiz görünür; idle oyuncular topa döner. CPU takımına verilen korner/taç otomatik oynanır; taç vuruşu saha içine yönlendirilir.
 - Yeni Casual Male GLB browser sahnesinde yüklendi; mevcut iki takım forması görünür. Saha oyuncuları hâlâ low-poly ve fotogerçekçi değiller. Daha gerçekçi futbolcu GLB'si için blender-only OpenGameArt modelini dönüştürmek üzere Blender gerekir; kullanıcının ortamında Blender/FFmpeg kurulu değil.
 - Araştırma için oluşturulan PNG ekran görüntüleri temizlendi.
+
+## Son değişiklikler (saha, orantı, aut/taç)
+
+- **Saha**: `host.js` dokuyu `assets/textures/pitch.png` yolundan arıyordu, dosya `assets/pitch.png`'de olduğu için hep yedek çizim görünüyordu. Yol düzeltildi. `pitch.png`, `football_court.glb` içindeki saha dokusuyla birebir aynı.
+- **Orantı**: top yarıçapı 0.48 → 0.2 (`game.js` içinde `BR`), oyuncu boyu ~2 m (`PLAYER_SCALE = 0.84`).
+- **Taç**: artık gerçek el atışı (9–22 m/s). Dokunup bırakmak yakına atar, uzağa atmak için parmağı uzun çekmek gerekir. Saha dışına doğru çekilen yön içeri çevrilir.
+- **Aut (kale vuruşu)**: top çıkınca ayrı `goalkick` durumu başlar, kaleci kale alanından vurur.
+- **Aut modu (telefon)**: aut, taç ve korner'de vuruşu yapan oyuncunun telefonu gamepad yerine tam ekran nişan alanına geçer. Parmağı atılacak yöne düz çek, uzunluk = güç, bırakınca atar (`c2h {t:'aim', x, y, p}` → `game.restartKick`). Kaleci topu elinde tutunca da aynı mod açılır.
+- Testler: `npm test` (23 test).
