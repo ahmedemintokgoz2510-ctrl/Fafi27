@@ -7,7 +7,8 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { pingInterval: 10000, pingTimeout: 8000 });
 
-app.use(express.static(__dirname + '/public'));
+// Telefon/tahta eski dosyayı önbellekten açmasın: her seferinde sunucuya sor.
+app.use(express.static(__dirname + '/public', { etag: true, setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
 
 const rooms = {}; // kod -> { host: socketId, slots: [socketId|null, socketId|null] }
 const makeCode = () => {
