@@ -63,6 +63,15 @@
   #passCharge{position:absolute;left:24%;right:24%;bottom:19%;height:4px;background:rgba(15,26,20,.8);border-radius:999px;overflow:hidden;pointer-events:none}
   #throughCharge{position:absolute;left:24%;right:24%;bottom:19%;height:4px;background:rgba(15,26,20,.8);border-radius:999px;overflow:hidden;pointer-events:none}
   #slideCharge{position:absolute;left:24%;right:24%;bottom:19%;height:4px;background:rgba(15,26,20,.8);border-radius:999px;overflow:hidden;pointer-events:none}
+  /* aut / taç / korner modu: parmağı düz çek */
+  #aim{position:absolute;inset:0;display:none;z-index:6;touch-action:none;background:radial-gradient(ellipse at 50% 60%,rgba(42,83,56,.28),transparent 70%)}
+  #pad.restart #aim{display:block}
+  #pad.restart #left,#pad.restart #right,#pad.restart #layoutToggle,#pad.restart #layoutReset{display:none}
+  #aimCv{position:absolute;inset:0;width:100%;height:100%}
+  #aimTitle{position:absolute;top:calc(env(safe-area-inset-top) + 1.6rem);left:0;right:0;text-align:center;font-family:var(--display);font-size:clamp(2.2rem,12vmin,3.6rem);font-weight:700;letter-spacing:.06em;color:var(--chalk);pointer-events:none}
+  #aimSub{position:absolute;top:calc(env(safe-area-inset-top) + 1.6rem + clamp(2.8rem,14vmin,4.2rem));left:1rem;right:1rem;text-align:center;color:var(--muted);font-size:.9rem;pointer-events:none}
+  #aimPower{position:absolute;left:12%;right:12%;bottom:calc(env(safe-area-inset-bottom) + 1.4rem);height:10px;background:rgba(15,26,20,.85);border:1px solid rgba(236,232,220,.35);border-radius:999px;overflow:hidden;pointer-events:none}
+  #aimPowerFill{height:100%;width:0;background:linear-gradient(90deg,#4f9a5b,#c9a24f 60%,#b3483f)}
   #rotate{position:fixed;inset:0;z-index:5;background:var(--bg);display:none;align-items:center;justify-content:center;text-align:center;padding:2rem;font-size:1.2rem;color:var(--muted)}
   @media (orientation:portrait){#pad.on ~ #rotate,#pen.on ~ #rotate{display:flex}}
   /* penaltı */
@@ -109,6 +118,12 @@
     <button class="btn" id="bPressure" type="button" aria-label="Basılı tutarak topa baskı yap">BASKI</button>
     <button class="btn" id="bSlide" type="button" aria-label="Yakındaki rakibe doğru kayarak müdahale et; uzun basış daha serttir">KAY<div id="slideCharge"><div id="slideChargeFill"></div></div></button>
   </div>
+  <div id="aim">
+    <canvas id="aimCv"></canvas>
+    <div id="aimTitle">AUT</div>
+    <div id="aimSub">Nereye atacaksan parmağını o yöne düz çek, bırakınca atar.</div>
+    <div id="aimPower"><div id="aimPowerFill"></div></div>
+  </div>
   <button id="layoutReset" type="button" aria-label="Buton konumlarını varsayılana döndür">SIFIRLA</button>
   <button id="layoutToggle" type="button" aria-label="Buton konumlarını düzenle">DÜZEN</button>
 </div>
@@ -129,7 +144,7 @@
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="config.js"></script>
-<script src="js/controller.js"></script>
+<script src="config.js?v=3"></script>
+<script src="js/controller.js?v=3"></script>
 </body>
 </html>
