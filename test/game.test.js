@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createGame } = require('../public/js/game.js');
+const { createGame, resolvePenalty, createShootout } = require('../public/js/game.js');
 global.window = global;
 require('../public/config.js');
 const projectCfg = global.FAFI;
@@ -296,4 +296,22 @@ test('CPU corner and throw-in restarts are played instead of freezing the match'
   } finally {
     Math.random = originalRandom;
   }
+});
+
+test('penalty resolve: corner shot beats a keeper left in the middle, centre dive saves a centre shot', () => {
+  const seq = () => 0.5;
+  assert.equal(resolvePenalty({ power: 0.2, ax: 0.9, ay: 0.9 }, { power: 0.5, ax: 0, ay: 0.35 }, null, null, seq).result, 'goal');
+  assert.equal(resolvePenalty({ power: 0.2, ax: 0, ay: 0.35 }, { power: 0.5, ax: 0, ay: 0.35 }, null, null, seq).result, 'save');
+  assert.equal(resolvePenalty({ power: 0.2, ax: 1.25, ay: 0.5 }, { power: 1, ax: 0, ay: 0.35 }, null, null, seq).result, 'miss');
+});
+
+test('penalty shootout: early finish, tie goes to sudden death', () => {
+  const a = createShootout();
+  for (let i = 0; i < 6; i++) a.record(i % 2 === 0 ? 'goal' : 'save');
+  assert.equal(a.done, true); assert.equal(a.winner, 0);
+  const b = createShootout();
+  for (let i = 0; i < 10; i++) b.record('goal');
+  assert.equal(b.done, false); assert.equal(b.current().team, 0);
+  b.record('goal'); assert.equal(b.done, false);
+  b.record('save'); assert.equal(b.done, true); assert.equal(b.winner, 0);
 });
