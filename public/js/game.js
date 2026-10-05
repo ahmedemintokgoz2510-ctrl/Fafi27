@@ -604,6 +604,45 @@
     return G;
   }
 
-  const api = { createGame };
+  // ---------- penaltı atışları (saf mantık) ----------
+  // Koordinatlar şutçu bakışı: ax -1..1 kale genişliği (sağ=+), ay 0..1 yer..üst direk. Güç 0 (yeşil) .. 1 (kırmızı).
+  function resolvePenalty(shot, keep, shooter, keeper, rnd) {
+    rnd = rnd || Math.random;
+    const sp = clamp(+shot.power || 0, 0, 1), kp = clamp(+keep.power || 0, 0, 1);
+    const g = () => (rnd() + rnd() + rnd() - 1.5) * 2;
+    const sig = (0.04 + 0.2 * sp * sp) * clamp(1.45 - ((shooter && shooter.shooting) || 75) / 100, 0.35, 1.05);
+    const tx = clamp(+shot.ax || 0, -1.3, 1.3) + g() * sig, ty = Math.max(0, clamp(+shot.ay || 0, 0, 1.3) + g() * sig * 0.8);
+    const tb = 0.95 - 0.55 * sp;
+    const D = { x: clamp(+keep.ax || 0, -1, 1), y: clamp(+keep.ay || 0, 0, 1) }, C = { x: 0, y: 0.35 };
+    const speed = 1.5 + 3 * kp, d = Math.hypot(D.x - C.x, D.y - C.y);
+    const k = d > 0.001 ? Math.min(1, speed * Math.max(0.1, tb - 0.12) / d) : 0;
+    const K = { x: C.x + (D.x - C.x) * k, y: C.y + (D.y - C.y) * k };
+    const rs = clamp(0.38 + (((keeper && keeper.defending) || 75) - 75) * 0.004, 0.3, 0.5);
+    let result;
+    if (Math.abs(tx) > 1.12 || ty > 1.1) result = 'miss';
+    else if (Math.abs(tx) > 1 || ty > 1) result = 'post';
+    else result = Math.hypot(K.x - tx, K.y - ty) <= rs ? 'save' : 'goal';
+    return { result, tx, ty, tb, K, D, dur: Math.max(0.2, d * k / speed) };
+  }
+
+  function createShootout(rnd) {
+    rnd = rnd || Math.random;
+    const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+    const S = { score: [0, 0], kicks: [[], []], n: 0, done: false, winner: null, order: [0, 1].map(() => shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])) };
+    S.current = () => { const team = S.n % 2, round = Math.floor(S.n / 2); return { team, keeperTeam: 1 - team, idx: S.order[team][round % 10], round, n: S.n }; };
+    S.record = (result) => {
+      const t = S.n % 2, scored = result === 'goal';
+      if (scored) S.score[t]++;
+      S.kicks[t].push(scored ? 'g' : 'm'); S.n++;
+      const a = S.kicks[0].length, b = S.kicks[1].length;
+      if (a <= 5 && b <= 5 && (S.score[0] > S.score[1] + (5 - b) || S.score[1] > S.score[0] + (5 - a))) S.done = true;
+      else if (a === b && a >= 5 && S.score[0] !== S.score[1]) S.done = true;
+      if (S.done) S.winner = S.score[0] > S.score[1] ? 0 : 1;
+      return S.done;
+    };
+    return S;
+  }
+
+  const api = { createGame, resolvePenalty, createShootout };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FafiGame = api;
 })(typeof window !== 'undefined' ? window : globalThis);

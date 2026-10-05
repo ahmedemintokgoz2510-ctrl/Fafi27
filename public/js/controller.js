@@ -16,7 +16,7 @@
 
   function show(id) {
     ['join', 'wait', 'pick', 'end'].forEach((s) => $(s).classList.toggle('on', s === id));
-    $('pad').classList.toggle('on', id === 'pad');
+    $('pad').classList.toggle('on', id === 'pad'); $('pen').classList.remove('on');
   }
   function wait(title, msg) { $('waitTitle').textContent = title; $('waitMsg').textContent = msg || ''; show('wait'); }
 
@@ -53,12 +53,14 @@
       phase = m.phase; myTeam = m.team === undefined ? null : m.team;
       if (m.phase === 'pick') { show('pick'); drawCards(m.taken); }
       else if (m.phase === 'play') openPad();
+      else if (m.phase === 'pen') { myTeam = m.team === undefined ? null : m.team; openPen(); }
       else if (m.phase === 'end') {
         const [a, b] = m.score || [0, 0];
         $('endTitle').textContent = a === b ? 'Berabere' : (a > b ? 0 : 1) === myTeam ? 'Kazandın' : 'Kaybettin';
         $('endScore').textContent = CFG.teams[0].name + ' ' + a + ' - ' + b + ' ' + CFG.teams[1].name;
         show('end');
       }
+    } else if (m.t === 'pen') { penMsg(m);
     } else if (m.t === 'taken') {
       if (phase === 'pick') { myTeam = m.taken[slot]; drawCards(m.taken); }
     } else if (m.t === 'pickFail') { $('pickMsg').textContent = 'Bu takım seçildi, diğerini seç'; }
@@ -247,6 +249,111 @@
   const releaseHeldButtons = () => activeButtonReleases.forEach((release, pointerId) => release({ pointerId }));
   window.addEventListener('blur', releaseHeldButtons);
   document.addEventListener('visibilitychange', () => { if (document.hidden) releaseHeldButtons(); });
+
+  // ---------- penaltı modu ----------
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const pc = $('penCv'), px = pc.getContext('2d');
+  const P = { step: 'wait', role: 'shoot', power: 0, ax: 0, ay: 0, has: false, t0: 0, drag: false, res: '' };
+  const penPower = (now) => 1 - Math.abs(((now - P.t0) / 750) % 2 - 1);   // 0 yeşil .. 1 kırmızı, gidip gelir
+  function penSize() { const r = Math.min(devicePixelRatio || 1, 2); pc.width = innerWidth * r; pc.height = innerHeight * r; px.setTransform(r, 0, 0, r, 0, 0); }
+  addEventListener('resize', penSize);
+  function geo() {
+    const W = innerWidth, H = innerHeight, gh = Math.min(H * 0.36, W * 0.17), gy = H * 0.22;
+    return { W, H, gh, gw: gh * 3, gx: W / 2 - gh * 1.5, gy, gb: gy + gh, by: H - 40, bx: W * 0.06, bw: W * 0.56, bh: 22 };
+  }
+  function penUi() {
+    const sh = P.role === 'shoot', show1 = { gate: 'penGate', power: 'penLock', aim: 'penReady' }[P.step];
+    ['penGate', 'penLock', 'penReady'].forEach((id) => { $(id).style.display = id === show1 && (id !== 'penReady' || P.has) ? 'block' : 'none'; });
+    $('penMsg').textContent = ({
+      wait: 'Bekleniyor…',
+      gate: sh ? 'Sıra sende, şutçusun. Hazır olunca ekranı aç.' : 'Rakip penaltı atacak, kalecisin. Hazır olunca ekranı aç.',
+      power: sh ? 'Çubuğa dokunarak gücü sabitle. Kırmızı: sert ama riskli.' : 'Çubuğa dokunarak gücü sabitle. Kırmızı: çok hızlı atlarsın.',
+      aim: sh ? 'Parmağını sürükle: topun gideceği yeri seç, sonra HAZIR.' : 'Parmağını sürükle: atlayacağın yeri seç, sonra HAZIR.',
+      sent: 'Rakip bekleniyor…', watch: ''
+    })[P.step] || '';
+  }
+  function penMsg(m) {
+    if (m.score) $('penScore').textContent = m.score;
+    if (m.s === 'start') { Object.assign(P, { role: m.role, step: 'gate', has: false, res: '' }); $('penWho').textContent = m.top || ''; }
+    else if (m.s === 'go') { P.step = 'watch'; P.res = 'Atış!'; }
+    else if (m.s === 'result') {
+      P.step = 'watch'; P.res = { goal: 'GOL!', save: 'KURTARILDI!', post: 'DİREK!', miss: 'DIŞARI!' }[m.result] || '';
+      if (navigator.vibrate) navigator.vibrate(m.result === 'goal' ? [120, 60, 120] : 60);
+    }
+    penUi();
+  }
+  function openPen() {
+    const t = CFG.teams[myTeam] || CFG.teams[0];
+    document.documentElement.style.setProperty('--team', t.color);
+    P.step = 'wait'; show('pen'); $('pen').classList.add('on'); penSize(); penUi();
+  }
+  function lockPower() { P.power = penPower(performance.now()); P.step = 'aim'; penUi(); if (navigator.vibrate) navigator.vibrate(15); }
+  function aimFrom(e) {
+    const g = geo(); if (e.clientY > g.by - 16) return;
+    const sh = P.role === 'shoot';
+    P.ax = clamp((e.clientX - (g.gx + g.gw / 2)) / (g.gw / 2), sh ? -1.3 : -1, sh ? 1.3 : 1);
+    P.ay = clamp((g.gb - e.clientY) / g.gh, 0, sh ? 1.3 : 1);
+    if (!P.has) { P.has = true; penUi(); }
+  }
+  pc.addEventListener('pointerdown', (e) => {
+    if (P.step === 'power') return lockPower();
+    if (P.step === 'aim') { P.drag = true; pc.setPointerCapture(e.pointerId); aimFrom(e); }
+  });
+  pc.addEventListener('pointermove', (e) => { if (P.drag) aimFrom(e); });
+  pc.addEventListener('pointerup', () => { P.drag = false; }); pc.addEventListener('pointercancel', () => { P.drag = false; });
+  $('penGate').onclick = () => { P.step = 'power'; P.t0 = performance.now(); penUi(); };
+  $('penLock').onclick = lockPower;
+  $('penReady').onclick = () => {
+    if (!P.has || P.step !== 'aim') return;
+    P.step = 'sent'; penUi();
+    socket.emit('c2h', { t: 'penReady', power: +P.power.toFixed(3), ax: +P.ax.toFixed(3), ay: +P.ay.toFixed(3) });
+  };
+  function penDraw(now) {
+    requestAnimationFrame(penDraw);
+    if (!$('pen').classList.contains('on')) return;
+    const g = geo(), c = px, cx = g.gx + g.gw / 2, sh = P.role === 'shoot';
+    c.clearRect(0, 0, g.W, g.H);
+    c.fillStyle = '#12261a'; c.fillRect(0, g.gb, g.W, g.H - g.gb);
+    c.strokeStyle = 'rgba(236,232,220,.12)'; c.lineWidth = 1; c.beginPath();
+    for (let i = 1; i < 16; i++) { c.moveTo(g.gx + g.gw * i / 16, g.gy); c.lineTo(g.gx + g.gw * i / 16, g.gb); }
+    for (let i = 1; i < 5; i++) { c.moveTo(g.gx, g.gy + g.gh * i / 5); c.lineTo(g.gx + g.gw, g.gy + g.gh * i / 5); }
+    c.stroke();
+    c.strokeStyle = '#ece8dc'; c.lineWidth = 5; c.beginPath(); c.moveTo(g.gx, g.gb); c.lineTo(g.gx, g.gy); c.lineTo(g.gx + g.gw, g.gy); c.lineTo(g.gx + g.gw, g.gb); c.stroke();
+    c.lineWidth = 1; c.beginPath(); c.moveTo(g.gx - 20, g.gb); c.lineTo(g.gx + g.gw + 20, g.gb); c.stroke();
+    const kw = g.gh * 0.3, kh = g.gh * 0.62;
+    const keeper = (x, a) => {
+      c.globalAlpha = a; c.fillStyle = '#d4ae48'; c.fillRect(x - kw / 2, g.gb - kh, kw, kh * 0.62);
+      c.fillStyle = '#273442'; c.fillRect(x - kw / 2, g.gb - kh * 0.38, kw, kh * 0.38);
+      c.fillStyle = '#d9b595'; c.beginPath(); c.arc(x, g.gb - kh - kw * 0.28, kw * 0.3, 0, 7); c.fill();
+      c.strokeStyle = '#d4ae48'; c.lineWidth = kw * 0.2; c.beginPath();
+      c.moveTo(x - kw / 2, g.gb - kh * 0.95); c.lineTo(x - kw * 1.2, g.gb - kh * 1.2); c.moveTo(x + kw / 2, g.gb - kh * 0.95); c.lineTo(x + kw * 1.2, g.gb - kh * 1.2); c.stroke();
+      c.globalAlpha = 1;
+    };
+    keeper(cx, 1);
+    const tx = cx + P.ax * g.gw / 2, ty = g.gb - P.ay * g.gh, bx = cx, by = g.gb + (g.by - g.gb) * 0.5;
+    if (P.has && (P.step === 'aim' || P.step === 'sent')) {
+      c.strokeStyle = '#bfa56a'; c.lineWidth = 3; c.setLineDash([9, 7]); c.beginPath();
+      if (sh) { c.moveTo(bx, by); c.lineTo(tx, ty); } else { keeper(tx, 0.45); c.moveTo(cx, g.gb - kh / 2); c.lineTo(tx, ty); }
+      c.stroke(); c.setLineDash([]); c.beginPath(); c.arc(tx, ty, 11, 0, 7); c.stroke();
+    }
+    if (sh) {
+      c.fillStyle = '#f4f2ea'; c.beginPath(); c.arc(bx, by, 11, 0, 7); c.fill();
+      c.fillStyle = '#202327'; c.beginPath(); c.arc(bx, by, 4, 0, 7); c.fill();
+    }
+    const grad = c.createLinearGradient(g.bx, 0, g.bx + g.bw, 0);
+    grad.addColorStop(0, '#4f9a5b'); grad.addColorStop(0.55, '#c9a24f'); grad.addColorStop(1, '#b3483f');
+    c.fillStyle = grad; c.fillRect(g.bx, g.by, g.bw, g.bh);
+    c.strokeStyle = 'rgba(236,232,220,.5)'; c.lineWidth = 1; c.strokeRect(g.bx, g.by, g.bw, g.bh);
+    if (P.step === 'power' || P.step === 'aim' || P.step === 'sent' || P.step === 'watch') {
+      const u = P.step === 'power' ? penPower(now) : P.power;
+      c.fillStyle = '#ece8dc'; c.fillRect(g.bx + u * g.bw - 3, g.by - 6, 6, g.bh + 12);
+    }
+    if (P.step === 'watch' && P.res) {
+      c.fillStyle = '#ece8dc'; c.textAlign = 'center'; c.font = '700 ' + Math.round(g.H * 0.16) + 'px Barlow Condensed, Arial Narrow, sans-serif';
+      c.fillText(P.res, g.W / 2, g.H * 0.66); c.textAlign = 'start';
+    }
+  }
+  requestAnimationFrame(penDraw);
 
   document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
   document.addEventListener('contextmenu', (e) => e.preventDefault());

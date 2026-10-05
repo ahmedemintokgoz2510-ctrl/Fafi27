@@ -10,6 +10,7 @@
   let phase = 'menu';            // menu | lobby | match | end
   let room = null, minutes = CFG.durations[1] || 5, muted = false, playing = false;
   const joined = [false, false], slotTeam = [null, null];
+  let mode = 'match', shoot = null;   // mode: match | pen (penaltı atışları)
   let game = FafiGame.createGame(CFG, onGameEvent);
   game.start(minutes, [false, false]);   // menü arkasında duran önizleme
 
@@ -447,6 +448,9 @@
       if (cam.fov !== 58) { cam.fov = 58; cam.updateProjectionMatrix(); }
       orbit += dt * 0.1;
       cam.position.set(Math.sin(orbit) * 36, 58, 52 + Math.cos(orbit) * 4); cam.lookAt(0, 0, 0);
+    } else if (shoot && shoot.k) {
+      if (cam.fov !== 50) { cam.fov = 50; cam.updateProjectionMatrix(); }
+      const d = shoot.k.dir; cam.position.set(shoot.k.spotX - d * 9.5, 4.4, 0); cam.lookAt(d * (L / 2 - 6), 1.4, 0);
     } else if (game.state === 'corner') {
       if (cam.fov !== 48) { cam.fov = 48; cam.updateProjectionMatrix(); }
       const sideX = B.x < 0 ? -1 : 1, sideZ = B.z < 0 ? -1 : 1;
@@ -476,7 +480,7 @@
   }
   let lastClock = '', lastScore = '';
   function hudTick() {
-    const s = Math.ceil(game.time), c = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    const s = Math.ceil(game.time), c = shoot ? 'PEN' : String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
     if (c !== lastClock) { lastClock = c; $('clock').textContent = c; }
     const sc = game.score.join('-'); if (sc !== lastScore) { lastScore = sc; $('sc0').textContent = game.score[0]; $('sc1').textContent = game.score[1]; }
     [0, 1].forEach((t) => {
@@ -496,6 +500,7 @@
   const both = (msg) => socket.emit('h2c', { slot: null, msg });
   function phaseMsg(slot) {
     const t = slotTeam[slot];
+    if (phase === 'match' && shoot) return { t: 'phase', phase: 'pen', team: t };
     if (phase === 'match') return { t: 'phase', phase: 'play', team: t };
     if (phase === 'end') return { t: 'phase', phase: 'end', team: t, score: game.score };
     return { t: 'phase', phase: 'pick', team: t, taken: slotTeam };
@@ -504,6 +509,7 @@
     joined[d.slot] = true;
     if (phase === 'match') updateHumans();
     refreshLobby(); send(d.slot, phaseMsg(d.slot));
+    if (shoot) setTimeout(() => penPrompt(d.slot), 300);
   });
   socket.on('slot:left', (d) => {
     joined[d.slot] = false;
@@ -516,10 +522,17 @@
     if (m.t === 'pick' && phase === 'lobby') {
       if (slotTeam[1 - m.slot] === m.team) return send(m.slot, { t: 'pickFail' });
       slotTeam[m.slot] = m.team; both({ t: 'taken', taken: slotTeam }); refreshLobby();
-      if (slotTeam[0] !== null && slotTeam[1] !== null && joined[0] && joined[1]) setTimeout(startMatch, 900);
+      if (slotTeam[0] !== null && slotTeam[1] !== null && joined[0] && joined[1]) setTimeout(beginMode, 900);
     } else if (m.t === 'mv' && playing && t !== null) game.setMove(t, clamp(+m.x || 0, -1, 1), clamp(+m.y || 0, -1, 1));
     else if (m.t === 'btn' && playing && t !== null) game.press(t, m.b, !!m.d, m);
-    else if (m.t === 'rematch' && phase === 'end') startMatch();
+    else if (m.t === 'penReady' && shoot && shoot.k && shoot.st === 'aim' && t !== null) {
+      shoot.in[t === shoot.k.c.team ? 0 : 1] = { power: +m.power, ax: +m.ax, ay: +m.ay };
+      if (shoot.in[0] && shoot.in[1]) {
+        const k = shoot.k;
+        k.R = FafiGame.resolvePenalty(shoot.in[0], shoot.in[1], k.shooter, k.keeper);
+        shoot.st = 'run'; shoot.t = 0; both({ t: 'pen', s: 'go' }); snd('whistle');
+      }
+    } else if (m.t === 'rematch' && phase === 'end') beginMode();
   });
   socket.on('connect', () => { if (room) location.reload(); }); // sunucu yeniden bağlanırsa oda kaybolur
 
@@ -552,6 +565,7 @@
   function startMatch() {
     if (phase !== 'lobby' && phase !== 'end') return;
     phase = 'match'; playing = true; updateHumans();
+    shoot = null; DOTS.classList.remove('on');
     game.start(minutes, game.human);
     lastClock = lastScore = ''; setTeamsHud();
     screen(null); $('hud').classList.add('on'); $('sndHud').classList.add('on');
@@ -586,12 +600,100 @@
     }
   }
 
+  // ---------- penaltı atışları ----------
+  const HL = L / 2, PGW = 3.0, DOTS = $('penDots');
+  const RES_TXT = { goal: 'GOL!', save: 'KURTARDI!', post: 'DİREK!', miss: 'DIŞARI!' };
+  function beginMode() { if (mode === 'pen') startShootout(); else startMatch(); }
+  function scoreTxt() { const S = shoot.S; return CFG.teams[0].short + ' ' + S.score[0] + ' - ' + S.score[1] + ' ' + CFG.teams[1].short; }
+  function dots() {
+    const S = shoot.S, n = Math.max(5, S.kicks[0].length, S.kicks[1].length);
+    DOTS.innerHTML = [0, 1].map((t) => '<div><b>' + CFG.teams[t].short + '</b>' + Array.from({ length: n }, (_, i) => {
+      const r = S.kicks[t][i]; return '<i class="' + (r === 'g' ? 'g' : r ? 'm' : '') + '">' + (r === 'g' ? '●' : r ? '✕' : '○') + '</i>';
+    }).join('') + '</div>').join('');
+  }
+  function penPrompt(slot) {
+    const k = shoot && shoot.k; if (!k || shoot.st !== 'aim' || slotTeam[slot] === null) return;
+    const side = slotTeam[slot] === k.c.team ? 0 : 1; if (shoot.in[side]) return;
+    send(slot, { t: 'pen', s: 'start', role: side === 0 ? 'shoot' : 'keep', top: '#' + k.shooter.number + ' ' + k.shooter.name + (side === 0 ? ' (sen)' : ' şut çekiyor'), score: scoreTxt() });
+  }
+  function startShootout() {
+    if (phase !== 'lobby' && phase !== 'end') return;
+    phase = 'match'; playing = true; updateHumans();
+    game.start(minutes, [false, false]);
+    shoot = { S: FafiGame.createShootout(), st: 'intro', t: 0, k: null, in: [null, null] };
+    game.score = shoot.S.score; lastClock = lastScore = ''; setTeamsHud();
+    screen(null); $('hud').classList.add('on'); $('sndHud').classList.add('on'); DOTS.classList.add('on'); dots();
+    [0, 1].forEach((s) => send(s, { t: 'phase', phase: 'pen', team: slotTeam[s] }));
+    crowd(true); snd('whistle'); banner('PENALTI ATIŞLARI<small>5 atış · eşitlikte seri sürer</small>', 2300);
+  }
+  function nextKick() {
+    const S = shoot.S, c = S.current(), dir = c.team === 0 ? 1 : -1;
+    const shooter = game.teams[c.team][c.idx], keeper = game.teams[c.keeperTeam][0], spotX = dir * (HL - 11);
+    game.players.forEach((p, i) => {
+      const a = i / game.players.length * Math.PI * 2;
+      p.x = Math.cos(a) * 9.5; p.z = Math.sin(a) * 9.5; p.vx = p.vz = 0; p.face = a + Math.PI; p.kickT = p.diveT = p.slideT = 0;
+    });
+    shooter.x = spotX - dir * 3.6; shooter.z = 1.8; shooter.face = dir === 1 ? 0 : Math.PI; shooter.kickSide = 1;
+    keeper.x = dir * (HL - 0.8); keeper.z = 0; keeper.face = dir === 1 ? Math.PI : 0;
+    const B = game.ball; B.owner = null; B.x = spotX; B.y = 0.48; B.z = 0; B.vx = B.vy = B.vz = 0;
+    shoot.k = { c, dir, shooter, keeper, spotX, R: null, kicked: false, dived: false, fin: false, bv: null, t1: 0 };
+    shoot.in = [null, null]; shoot.st = 'aim'; shoot.t = 0;
+    banner('#' + shooter.number + ' ' + shooter.name + '<small>' + CFG.teams[c.team].name + ' · ' + (S.n + 1) + '. atış</small>', 1800);
+    dots(); [0, 1].forEach(penPrompt);
+  }
+  function ballFree(dt) {
+    const k = shoot.k, B = game.ball, v = k && k.bv; if (!v) return;
+    B.x += v.x * dt; B.z += v.z * dt; B.y += v.y * dt; v.y -= 19 * dt;
+    if (B.y < 0.48) { B.y = 0.48; v.y = v.y < -1.5 ? -v.y * 0.3 : 0; }
+    const f = Math.exp(-1.6 * dt); v.x *= f; v.z *= f;
+    const lim = HL + (k.R.result === 'miss' ? 8 : 2.2); if (Math.abs(B.x) > lim) { B.x = Math.sign(B.x) * lim; v.x = 0; }
+    B.vx = v.x; B.vz = v.z;
+  }
+  function keeperStep(k) {
+    const gk = k.keeper, R = k.R;
+    if (k.t1 > 0 && !k.dived) { k.dived = true; gk.diveT = 0.58; gk.diveSide = Math.sign(R.K.x * k.dir) || 1; }
+    if (k.dived) gk.z = k.dir * R.K.x * PGW * clamp((k.t1 - 0.1) / R.dur, 0, 1);
+  }
+  function shootStep(dt) {
+    const s = shoot; s.t += dt;
+    if (s.st === 'intro') { if (s.t > 2.4) nextKick(); return; }
+    const k = s.k; if (!k) return;
+    game.players.forEach((p) => { p.kickT = Math.max(0, p.kickT - dt); p.diveT = Math.max(0, p.diveT - dt); });
+    const B = game.ball;
+    if (s.st === 'result') {
+      k.t1 += dt; keeperStep(k); ballFree(dt);
+      if (s.t > 2.8) { if (s.S.done) { s.k = null; onGameEvent('end', { score: s.S.score.slice() }); } else nextKick(); }
+      return;
+    }
+    if (s.st !== 'run') return;
+    const T = s.t, R = k.R, sh = k.shooter, dir = k.dir;
+    sh.vx = T > 0.4 && T < 1.05 ? dir * 3.4 : 0; sh.x += sh.vx * dt; sh.z = 1.8 - 1.35 * clamp((T - 0.4) / 0.65, 0, 1);
+    if (!k.kicked && T >= 0.9) { k.kicked = true; sh.kickT = 0.42; snd('kick'); }
+    k.t1 = T - 1.1; keeperStep(k);
+    if (k.t1 <= 0) return;
+    const u = clamp(k.t1 / R.tb, 0, 1), ex = dir * HL, ey = 0.5 + R.ty * 1.4, ez = dir * R.tx * PGW;
+    B.x = k.spotX + (ex - k.spotX) * u; B.z = ez * u;
+    B.y = 0.48 + (ey - 0.48) * u + 0.4 * Math.sin(Math.PI * u) * Math.min(1, R.ty * 2);
+    B.vx = (ex - k.spotX) / R.tb; B.vz = ez / R.tb;
+    if (u < 1) return;
+    const r = R.result, vx = B.vx, vz = B.vz;
+    k.bv = r === 'goal' ? { x: vx * 0.22, y: 0, z: vz * 0.15 }
+      : r === 'miss' ? { x: vx * 0.5, y: 2, z: vz * 0.4 }
+      : r === 'save' ? { x: -dir * 3, y: 3.5, z: (Math.random() - 0.5) * 8 }
+      : { x: -dir * 7, y: 3.5, z: Math.sign(R.tx || 1) * dir * 2 };
+    s.st = 'result'; s.t = 0; s.S.record(r);
+    banner(RES_TXT[r] + '<small>' + scoreTxt() + '</small>', 2400);
+    if (r === 'goal') { snd('goal'); both({ t: 'vib', ms: [200, 80, 200] }); } else { snd('kick'); both({ t: 'vib', ms: 90 }); }
+    both({ t: 'pen', s: 'result', result: r, score: scoreTxt() }); dots();
+  }
+
   // ---------- düğmeler ----------
-  $('playBtn').onclick = openLobby;
+  $('playBtn').onclick = () => { mode = 'match'; openLobby(); };
+  $('penModeBtn').onclick = () => { mode = 'pen'; openLobby(); };
   $('sndBtn').onclick = () => { loadAudio(); setMuted(!muted); };
   $('sndHud').onclick = () => setMuted(!muted);
   $('lobbyBack').onclick = $('toMenu').onclick = () => location.reload();
-  $('rematch').onclick = () => { screen(null); startMatch(); };
+  $('rematch').onclick = () => { screen(null); beginMode(); };
   const durBox = $('durs');
   CFG.durations.forEach((m) => {
     const b = document.createElement('button'); b.textContent = m + ' dk'; b.className = m === minutes ? 'sel' : '';
@@ -604,7 +706,7 @@
   let last = performance.now();
   (function loop(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    if (playing && phase !== 'end') { game.update(dt); hudTick(); }
+    if (playing && phase !== 'end') { if (shoot) shootStep(dt); else game.update(dt); hudTick(); }
     frame(dt); renderer.render(scene, cam);
     requestAnimationFrame(loop);
   })(last);
