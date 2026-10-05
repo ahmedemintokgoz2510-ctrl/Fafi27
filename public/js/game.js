@@ -3,6 +3,7 @@
 (function (root) {
   'use strict';
   const L = 100, W = 64, HL = L / 2, HW = W / 2, GW = 3.7;
+  const BR = 0.2; // top yarıçapı (m). Gerçek top 0.11; oyuncu boyu ~2 m, ekranda görünsün diye ~2 kat.
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const rand = (a, b) => a + Math.random() * (b - a);
   const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -10,11 +11,11 @@
 
   function createGame(cfg, onEvent) {
     const emit = (t, d) => onEvent && onEvent(t, d || {});
-    const B = { x: 0, y: 0.48, z: 0, vx: 0, vy: 0, vz: 0, spin: 0, offside: false, owner: null, target: null, last: 0, ownT: 0 };
+    const B = { x: 0, y: BR, z: 0, vx: 0, vy: 0, vz: 0, spin: 0, offside: false, owner: null, target: null, last: 0, ownT: 0 };
     const G = {
-      L, W, HL, HW, GW, ball: B, players: [], teams: [[], []], score: [0, 0], time: 0,
+      L, W, HL, HW, GW, BR, ball: B, players: [], teams: [[], []], score: [0, 0], time: 0,
       state: 'idle', stateT: 0, human: [false, false], ctrl: [null, null], chaser: [null, null],
-      input: [{ x: 0, z: 0, charge: -1, sprint: false, pressure: false }, { x: 0, z: 0, charge: -1, sprint: false, pressure: false }], autoLock: [0, 0], conceded: 0, pressers: [[], []]
+      input: [{ x: 0, z: 0, charge: -1, sprint: false, pressure: false }, { x: 0, z: 0, charge: -1, sprint: false, pressure: false }], autoLock: [0, 0], conceded: 0, pressers: [[], []], stateAge: 0, aimKeeper: null
     };
 
     // Kalecinin kendi ceza sahası (16.5 x 40.3). Eliyle yalnızca burada oynayabilir.
@@ -52,10 +53,10 @@
       });
       const k = G.teams[kt][9];
       k.x = -k.dir * 0.95; k.z = 0; k.protect = 0.6;
-      B.owner = k; B.target = null; B.x = 0; B.y = 0.48; B.z = 0; B.vx = B.vy = B.vz = 0; B.spin = 0; B.offside = false; B.ownT = 0; B.last = kt;
+      B.owner = k; B.target = null; B.x = 0; B.y = BR; B.z = 0; B.vx = B.vy = B.vz = 0; B.spin = 0; B.offside = false; B.ownT = 0; B.last = kt;
       G.input.forEach((i) => { i.charge = -1; i.sprint = false; i.pressure = false; });
       G.ctrl = [null, null];
-      G.state = 'kickoff'; G.stateT = 1.5;
+      G.state = 'kickoff'; G.stateT = 1.5; G.aimKeeper = null;
       emit('kickoff');
     }
 
@@ -65,9 +66,9 @@
         p.vx = 0; p.vz = 0; p.noGrab = p.team === team ? 0.25 : Math.max(p.noGrab, 1.0);
       });
       taker.face = face; taker.x = x - Math.cos(face) * 1.2; taker.z = z - Math.sin(face) * 1.2; taker.vx = 0; taker.vz = 0;
-      taker.protect = 0.9; taker.noGrab = 0.8; B.owner = taker; B.target = null; B.x = x; B.y = kind === 'throwin' ? 1.8 : 0.48; B.z = z; B.vx = 0; B.vy = 0; B.vz = 0; B.spin = 0; B.offside = false; B.ownT = 0; B.last = team;
-      G.ctrl[team] = taker;
-      G.state = kind; G.stateT = kind === 'corner' || kind === 'throwin' ? 8 : 1.6; emit(eventType, { team, player: taker.number, x, z });
+      taker.protect = 0.9; taker.noGrab = 0.8; B.owner = taker; B.target = null; B.x = x; B.y = kind === 'throwin' ? 1.8 : BR; B.z = z; B.vx = 0; B.vy = 0; B.vz = 0; B.spin = 0; B.offside = false; B.ownT = 0; B.last = team;
+      G.ctrl[team] = taker; G.aimKeeper = null;
+      G.state = kind; G.stateAge = 0; G.stateT = kind === 'corner' || kind === 'throwin' || kind === 'goalkick' ? 8 : 1.6; emit(eventType, { team, player: taker.number, x, z });
     }
 
     G.awardPenalty = function (team, player) {
@@ -95,6 +96,12 @@
       setSetPieceState('throwin', team, spotX, spotZ, -side * Math.PI / 2, taker);
     };
 
+    // Aut (kale vuruşu): top kale alanında yerde, kaleci vuruşu kullanır.
+    G.awardGoalKick = function (team, side) {
+      const spotX = side * (HL - 5.5), face = side === 1 ? Math.PI : 0;
+      setSetPieceState('goalkick', team, spotX, 0, face, G.teams[team][0]);
+    };
+
     G.awardCorner = function (team, xSide, zSide) {
       const spotX = (xSide < 0 ? -1 : 1) * (HL - 0.6);
       const spotZ = (zSide < 0 ? -1 : 1) * (HW - 0.6);
@@ -103,7 +110,7 @@
     };
 
     G.start = function (minutes, human) {
-      G.score = [0, 0]; G.time = minutes * 60; G.human = human || [true, true];
+      G.score = [0, 0]; G.time = minutes * 60; G.human = human || [true, true]; G.aimKeeper = null;
       mkPlayers(); placeKickoff(0);
     };
     G.setMove = (t, x, z) => { G.input[t].x = x; G.input[t].z = z; };
@@ -246,22 +253,68 @@
       return true;
     }
 
+    // ---------- aut / taç / korner: parmakla düz çekilen vuruş ----------
+    // Yön = parmağın çekildiği yön (tahta görünümünde), güç = çekme uzunluğu (0..1).
+    // Taç: gerçekçi el atışı (9-22 m/s, kısa kavis). Aut: uzun top. Korner: ortalama.
+    function launchRestart(p, kind, ax, az, power) {
+      const m = Math.hypot(ax, az) || 1; ax /= m; az /= m;
+      power = clamp(power, 0, 1);
+      if (kind === 'throwin') {
+        const inward = B.z > 0 ? -1 : 1;
+        if (az * inward < 0.2) { az = inward * 0.2; const n = Math.hypot(ax, az); ax /= n; az /= n; }
+        kick(p, ax, az, 9 + power * 13, 0, 4 + power * 2.5);
+      } else if (kind === 'corner') {
+        kick(p, ax, az, 17 + power * 17, 0.012, 7.5 + power * 4.5);
+      } else { // goalkick / kaleci dağıtımı
+        kick(p, ax, az, 14 + power * 24, 0.015, 5 + power * 8);
+      }
+    }
+
+    // CPU ya da süre dolunca: otomatik vuruş
+    function autoRestart(taker, kind) {
+      if (kind === 'corner') {
+        doPass(taker, taker.dir * (HL - 8) - taker.x, -taker.z, false, 0.45, true);
+      } else if (kind === 'throwin') {
+        const inward = B.z > 0 ? -1 : 1;
+        let best = null, bd = 1e9;
+        for (const q of G.teams[taker.team]) {
+          if (q === taker || q.role === 'GK') continue;
+          const d = dist(taker, q); if (d < 4 || d > 22) continue;
+          if ((q.z - taker.z) * inward < 1) continue;
+          const score = Math.abs(d - 11); if (score < bd) { bd = score; best = q; }
+        }
+        if (best) {
+          const d = dist(taker, best);
+          kick(taker, best.x - taker.x, best.z - taker.z, clamp(d * 0.9 + 5, 9, 22), 0.01, 4.2);
+          B.target = best;
+        } else launchRestart(taker, 'throwin', taker.dir * 0.4, inward, 0.35);
+      } else {
+        doPass(taker, taker.dir, 0, true, 0.6, true) || kick(taker, taker.dir, 0, 28, 0.05, 6);
+      }
+      B.offside = false;
+      if (G.state !== 'play') G.state = 'play';
+      G.aimKeeper = null;
+      emit('restartEnd');
+    }
+
+    // Telefondan gelen "parmağı düz çek" vuruşu
+    G.restartKick = function (t, ax, az, power) {
+      if (!G.human[t]) return false;
+      const taker = B.owner, kind = G.state;
+      if (!taker || taker.team !== t) return false;
+      const keeperHold = kind === 'play' && taker.role === 'GK' && G.aimKeeper === taker;
+      if (!keeperHold && kind !== 'corner' && kind !== 'throwin' && kind !== 'goalkick') return false;
+      if (Math.hypot(ax, az) < 0.2) return false;
+      launchRestart(taker, keeperHold ? 'goalkick' : kind, ax, az, power);
+      B.offside = false; G.aimKeeper = null;
+      G.state = 'play'; emit('restartEnd');
+      return true;
+    };
+
     G.press = function (t, btn, down, options = {}) {
       const inp = G.input[t];
       if (!G.human[t]) return;
       if (G.state !== 'play') {
-        if ((G.state === 'corner' || G.state === 'throwin') && btn === 'pass' && !down) {
-          const p = G.ctrl[t];
-          if (p && B.owner === p) {
-            const power = clamp(Number(options.hold) || 0, 0, 1.2) / 1.2;
-            let aimX = inp.x, aimZ = inp.z;
-            if (G.state === 'throwin') aimZ = (B.z > 0 ? -1 : 1) * (Math.abs(aimZ) + 0.25);
-            doPass(p, aimX, aimZ, false, power, true);
-            B.offside = false;
-            G.state = 'play'; emit('restartEnd');
-          }
-          return;
-        }
         if ((G.state === 'penalty' || G.state === 'freekick') && !down && btn === 'shoot') {
           const p = G.ctrl[t];
           if (p && B.owner === p) {
@@ -475,7 +528,7 @@
             else G.awardFreeKick(attackingTeam, foulSpotX, foulSpotZ);
             emit('foul', { team: opponent.team, player: opponent.number, restart: isPenalty ? 'penalty' : 'freekick' });
           } else if (B.owner === opponent || dist(opponent, B) < 2.3) {
-            B.owner = null; B.target = null; B.x = opponent.x; B.y = 0.48; B.z = opponent.z;
+            B.owner = null; B.target = null; B.x = opponent.x; B.y = BR; B.z = opponent.z;
             B.vx = tackler.slideX * (8 + tackler.slidePower * 12); B.vy = 0.8; B.vz = tackler.slideZ * (8 + tackler.slidePower * 12);
             B.ownT = 0; B.last = tackler.team; opponent.noGrab = 0.5; tackler.noGrab = 0.25;
             emit('tackle', { team: tackler.team });
@@ -488,16 +541,10 @@
         if (d < 1.2 && d > 0.001) { const k = (1.2 - d) / 2 / d; a.x += (a.x - b.x) * k; a.z += (a.z - b.z) * k; b.x -= (a.x - b.x) * k; b.z -= (a.z - b.z) * k; }
       }
       const o = B.owner;
-      if (o && o.role === 'GK' && G.human[o.team] && G.ctrl[o.team] === o && B.ownT > 2.6) doPass(o, o.dir, 0, true) || kick(o, o.dir, 0, 28, 0.05);
+      if (o && o.role === 'GK' && G.human[o.team] && G.ctrl[o.team] === o && B.ownT > (G.aimKeeper === o ? 6 : 2.6)) doPass(o, o.dir, 0, true) || kick(o, o.dir, 0, 28, 0.05);
     }
 
     // ---------- top ----------
-    function placeRestart(p, x, z, face) {
-      p.face = face; p.x = x - Math.cos(face) * 0.95; p.z = z - Math.sin(face) * 0.95; p.vx = p.vz = 0;
-      B.owner = p; B.target = null; B.ownT = 0; p.protect = 0.8; B.vx = B.vy = B.vz = 0; B.x = x; B.y = 0.48; B.z = z; B.last = p.team;
-      for (const q of G.players) if (q.team !== p.team) q.noGrab = Math.max(q.noGrab, 1.2);
-      emit('restart');
-    }
     function nearestOf(list, x, z, noGK) {
       let best = null, bd = 1e9;
       for (const p of list) { if (noGK && p.role === 'GK') continue; const d = Math.hypot(p.x - x, p.z - z); if (d < bd) { bd = d; best = p; } }
@@ -515,7 +562,7 @@
           B.x = side * (HL - 0.3); B.vx = -B.vx * 0.45; B.vz *= 0.6; if (B.vy > 0) B.vy = -B.vy * 0.4; emit('post'); return;
         }
         if (Math.abs(B.z) < GW && B.y < 2.15) return goal(att);
-        if (B.last === att) placeRestart(G.teams[def][0], side * (HL - 6), 0, side === 1 ? Math.PI : 0);
+        if (B.last === att) G.awardGoalKick(def, side);
         else G.awardCorner(att, side, B.z);
       } else if (Math.abs(B.z) > HW) {
         const sz = B.z > 0 ? 1 : -1, team = 1 - B.last, x = clamp(B.x, -HL + 3, HL - 3);
@@ -532,7 +579,7 @@
         const diving = gk.diveT > 0.15 && gk.diveT < gk.diveDur * 0.85;
         const reach = diving ? 3.0 + (gk.diveLift || 0) * 0.5 : B.y > 1.6 ? 2.3 : 1.9;
         if (dh > reach || !(B.vx * gk.dir < -1 || spd < 3)) continue;
-        const hold = () => { B.owner = gk; B.target = null; B.y = 1.2; B.vx = B.vy = B.vz = 0; B.spin = 0; B.ownT = 0; gk.protect = 0.65; B.last = gk.team; };
+        const hold = () => { B.owner = gk; B.target = null; B.y = 1.2; B.vx = B.vy = B.vz = 0; B.spin = 0; B.ownT = 0; gk.protect = 0.65; B.last = gk.team; if (G.human[gk.team]) { G.aimKeeper = gk; emit('gkhold', { team: gk.team }); } };
         if (spd < 3) { hold(); emit('save', { team: gk.team, caught: true }); break; }
         if (!diving && spd > 8) {
           gk.diveT = gk.diveDur = 0.9; gk.diveSide = Math.sign(B.z - gk.z) || 1;
@@ -565,7 +612,7 @@
         const lead = 0.8 + touch * amplitude, blend = Math.min(1, 22 * dt);
         B.x += (o.x + Math.cos(o.face) * lead - B.x) * blend;
         B.z += (o.z + Math.sin(o.face) * lead - B.z) * blend;
-        B.y = o.role === 'GK' && inOwnBox(o, o.x, o.z) ? 1.2 : 0.48; B.vx = o.vx; B.vy = 0; B.vz = o.vz;
+        B.y = o.role === 'GK' && inOwnBox(o, o.x, o.z) ? 1.2 : BR; B.vx = o.vx; B.vy = 0; B.vz = o.vz;
         if (o.protect <= 0) for (const opp of G.teams[1 - o.team]) {
           const pressure = G.human[opp.team] ? G.ctrl[opp.team] === opp && G.input[opp.team].pressure : true;
           const exposed = Math.max(0, lead - 1.0);
@@ -582,7 +629,7 @@
         B.vz += B.spin * B.vx * 0.045 * dt;
         B.x += B.vx * dt; B.z += B.vz * dt;
         B.y += B.vy * dt; B.vy -= 19 * dt;
-        if (B.y < 0.48) { B.y = 0.48; B.vy = B.vy < -1.2 ? -B.vy * 0.32 : 0; }
+        if (B.y < BR) { B.y = BR; B.vy = B.vy < -1.2 ? -B.vy * 0.32 : 0; }
         const f = Math.exp(-(B.y > 0.7 ? 0.25 : 0.8) * dt); B.vx *= f; B.vz *= f;
         B.spin *= Math.exp(-1.25 * dt);
         const spd = Math.hypot(B.vx, B.vz);
@@ -603,7 +650,7 @@
           if (spd > 30 && Math.random() < 0.45) {
             B.vx *= 0.3; B.vz = B.vz * 0.3 + rand(-3, 3); receiver.noGrab = 0.35; B.target = null;
           } else {
-            B.owner = receiver; B.y = 0.48; B.vy = 0; B.ownT = 0; receiver.protect = 0.3; B.target = null;
+            B.owner = receiver; B.y = BR; B.vy = 0; B.ownT = 0; receiver.protect = 0.3; B.target = null;
           }
         }
         if (!B.owner && spd >= 26) {
@@ -617,7 +664,7 @@
             if (B.y > 1.0 || p.noGrab > 0 || spd > 20 || G.human[p.team] && G.ctrl[p.team] !== p && B.target !== p) continue;
             const d = dist(p, B); if (d < bd) { bd = d; best = p; }
           }
-          if (best) { B.owner = best; B.target = null; B.y = 0.48; B.vy = 0; B.ownT = 0; best.protect = 0.25; B.last = best.team; }
+          if (best) { B.owner = best; B.target = null; B.y = BR; B.vy = 0; B.ownT = 0; best.protect = 0.25; B.last = best.team; }
         }
       }
       if (detect) checkBounds();
@@ -638,16 +685,11 @@
         if (G.stateT <= 0) { G.state = 'play'; emit('restartEnd'); emit('whistle'); }
         return;
       }
-      if (G.state === 'corner' || G.state === 'throwin') {
+      if (G.state === 'corner' || G.state === 'throwin' || G.state === 'goalkick') {
         G.players.forEach((p) => { p.vx = p.vz = 0; });
-        G.stateT -= dt;
+        G.stateT -= dt; G.stateAge += dt;
         const taker = B.owner;
-        if (taker && (!G.human[taker.team] || G.stateT <= 0)) {
-          const aimX = G.state === 'corner' ? taker.dir * (HL - 8) - taker.x : taker.dir;
-          const aimZ = G.state === 'corner' ? -taker.z : (B.z > 0 ? -0.45 : 0.45);
-          doPass(taker, aimX, aimZ, false, 0.45, true);
-          B.offside = false; G.state = 'play'; emit('restartEnd');
-        }
+        if (taker && (!G.human[taker.team] || G.stateT <= 0)) autoRestart(taker, G.state);
         return;
       }
       if (G.state === 'goal') {
@@ -662,6 +704,7 @@
       if (G.time <= 0) { G.time = 0; G.state = 'end'; B.owner = null; emit('end', { score: G.score.slice() }); return; }
       updatePlayers(dt);
       ballStep(dt, true);
+      if (G.aimKeeper && B.owner !== G.aimKeeper) { G.aimKeeper = null; emit('restartEnd'); }
     };
 
     return G;

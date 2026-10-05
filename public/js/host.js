@@ -110,9 +110,9 @@
   const pitchMat = new THREE.MeshLambertMaterial({ map: pitchTexture() });
   const pitch = new THREE.Mesh(new THREE.PlaneGeometry(L / 0.926, W / 0.94), pitchMat);
   pitch.rotation.x = -Math.PI / 2; scene.add(pitch);
-  new THREE.TextureLoader().load('assets/textures/pitch.png', (tex) => {
-    tex.anisotropy = 8; pitchMat.map = tex; pitchMat.needsUpdate = true;
-  });
+  new THREE.TextureLoader().load('assets/pitch.png', (tex) => {
+    tex.anisotropy = 8; pitchMat.map = tex; pitchMat.color.set(0xffffff); pitchMat.needsUpdate = true;
+  }, undefined, () => console.warn('Saha dokusu yüklenemedi: assets/pitch.png'));
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 300), new THREE.MeshLambertMaterial({ color: '#1b3324' }));
   ground.rotation.x = -Math.PI / 2; ground.position.y = -0.05; scene.add(ground);
   const seatColors = ['#263644', '#344857', '#3f4d58', '#594743'].map((color) => new THREE.MeshLambertMaterial({ color }));
@@ -199,8 +199,8 @@
     });
     return capsule;
   }
-  // Oyuncu boyu: ~1.85 birim (1 birim = 1 m). Eskiden ~2.9 idi, saha/kale oyunculara göre küçük kalıyordu.
-  const PLAYER_SCALE = 0.76;
+  // Oyuncu boyu ~2 birim (1 birim = 1 m); top oyuncuya göre orantılı küçük.
+  const PLAYER_SCALE = 0.84; // ~2.05 m boy (kale 2.4 m)
   function makePlayerMesh(team, player) {
     const t = CFG.teams[team], g = new THREE.Group(), body = new THREE.Group();
     const role = player.role;
@@ -386,20 +386,20 @@
     const r = new THREE.Mesh(new THREE.RingGeometry(1.0, 1.2, 28), new THREE.MeshBasicMaterial({ color: '#ece8dc', transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
     r.rotation.x = -Math.PI / 2; r.position.y = 0.06; r.visible = false; scene.add(r); return r;
   });
-  const ballMesh = new THREE.Group(), ballRadius = 0.48;
+  const ballMesh = new THREE.Group(), ballRadius = game.BR;
   ballMesh.add(new THREE.Mesh(new THREE.SphereGeometry(ballRadius, 20, 16), mat('#f4f2ea')));
   const phi = (1 + Math.sqrt(5)) / 2;
   const panelDirections = [[-1, phi, 0], [1, phi, 0], [-1, -phi, 0], [1, -phi, 0], [0, -1, phi], [0, 1, phi], [0, -1, -phi], [0, 1, -phi], [phi, 0, -1], [phi, 0, 1], [-phi, 0, -1], [-phi, 0, 1]];
   panelDirections.forEach((values) => {
     const direction = new THREE.Vector3(...values).normalize();
-    const panel = new THREE.Mesh(new THREE.CircleGeometry(0.15, 5), mat('#202327'));
+    const panel = new THREE.Mesh(new THREE.CircleGeometry(0.15 * ballRadius / 0.48, 5), mat('#202327'));
     panel.position.copy(direction).multiplyScalar(ballRadius + 0.006);
     panel.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction); ballMesh.add(panel);
   });
   scene.add(ballMesh);
   const ballShadowMat = new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.24 });
-  const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.52, 18), ballShadowMat); ballShadow.rotation.x = -Math.PI / 2; ballShadow.position.y = 0.03; scene.add(ballShadow);
-  const ballMarker = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.98, 32), new THREE.MeshBasicMaterial({ color: '#ffd34f', transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
+  const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(ballRadius * 1.1, 18), ballShadowMat); ballShadow.rotation.x = -Math.PI / 2; ballShadow.position.y = 0.03; scene.add(ballShadow);
+  const ballMarker = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.72, 32), new THREE.MeshBasicMaterial({ color: '#ffd34f', transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false }));
   ballMarker.rotation.x = -Math.PI / 2; ballMarker.position.y = 0.045; scene.add(ballMarker);
 
   function resize() {
@@ -459,7 +459,7 @@
         if (animation.jump) animation.jump.setEffectiveWeight(jumping);
         animation.actor.rotation.z = -slide * 0.8;
         animation.mixer.update(dt);
-        const armLift = game.state === 'throwin' && B.owner === p ? 1.05 : p.role === 'GK' && B.owner === p ? 0.55 : 0;
+        const armLift = game.state === 'throwin' && B.owner === p ? 1.05 : p.role === 'GK' && B.owner === p && game.state !== 'goalkick' ? 0.55 : 0;
         if (animation.leftArm) animation.leftArm.rotation.z -= armLift;
         if (animation.rightArm) animation.rightArm.rotation.z += armLift;
         const kickLeg = p.kickSide === 0 ? animation.leftLeg : animation.rightLeg;
@@ -483,7 +483,7 @@
       ballMesh.position.set(B.x + (_hand.x - B.x) * holdW, B.y + (_hand.y - B.y) * holdW, B.z + (_hand.z - B.z) * holdW);
     }
     ballShadow.position.x = B.x; ballShadow.position.z = B.z;
-    ballShadow.scale.setScalar(1 + Math.max(0, B.y - ballRadius) * 0.1);
+    ballShadow.scale.setScalar(1 + Math.max(0, B.y - ballRadius) * 0.25);
     ballShadowMat.opacity = clamp(0.24 - Math.max(0, B.y - ballRadius) * 0.025, 0.06, 0.24);
     if (!playing || phase === 'end') {
       if (cam.fov !== 58) { cam.fov = 58; cam.updateProjectionMatrix(); }
@@ -566,6 +566,7 @@
       if (slotTeam[0] !== null && slotTeam[1] !== null && joined[0] && joined[1]) setTimeout(beginMode, 900);
     } else if (m.t === 'mv' && playing && t !== null) game.setMove(t, clamp(+m.x || 0, -1, 1), clamp(+m.y || 0, -1, 1));
     else if (m.t === 'btn' && playing && t !== null) game.press(t, m.b, !!m.d, m);
+    else if (m.t === 'aim' && playing && t !== null) game.restartKick(t, clamp(+m.x || 0, -1, 1), clamp(+m.y || 0, -1, 1), clamp(+m.p || 0, 0, 1));
     else if (m.t === 'penReady' && shoot && shoot.k && shoot.st === 'aim' && t !== null) {
       shoot.in[t === shoot.k.c.team ? 0 : 1] = { power: +m.power, ax: +m.ax, ay: +m.ay };
       if (shoot.in[0] && shoot.in[1]) {
@@ -614,7 +615,8 @@
     crowd(true); snd('whistle');
   }
   function onGameEvent(type, d) {
-    if (['penalty', 'freekick', 'corner', 'throwin'].includes(type)) both({ t: 'restart', kind: type, team: d.team });
+    if (['penalty', 'freekick', 'corner', 'throwin', 'goalkick'].includes(type)) both({ t: 'restart', kind: type, team: d.team });
+    else if (type === 'gkhold') both({ t: 'restart', kind: 'goalkick', team: d.team, live: true });
     else if (type === 'restartEnd') both({ t: 'restartEnd' });
     if (type === 'kickoff' && playing) banner(game.score[0] + ' - ' + game.score[1], 1200);
     else if (type === 'whistle') snd('whistle');
@@ -628,6 +630,7 @@
     else if (type === 'freekick') { banner('SERBEST VURUŞ!<small>' + CFG.teams[d.team].name + '</small>', 2200); snd('whistle'); both({ t: 'vib', ms: 170 }); }
     else if (type === 'corner') { banner('KORNER!<small>' + CFG.teams[d.team].name + '</small>', 1800); snd('whistle'); both({ t: 'vib', ms: 100 }); }
     else if (type === 'throwin') { banner('TAÇ ATIŞI<small>' + CFG.teams[d.team].name + '</small>', 1500); snd('whistle'); }
+    else if (type === 'goalkick') { banner('AUT<small>' + CFG.teams[d.team].name + ' · kaleci atıyor</small>', 1500); snd('whistle'); }
     else if (type === 'foul') { banner('FAUL!<small>' + CFG.teams[d.team].name + '</small>', 1800); snd('whistle'); both({ t: 'vib', ms: 130 }); }
     else if (type === 'offside') { banner('OFSAYT!<small>Serbest vuruş</small>', 1800); snd('whistle'); both({ t: 'vib', ms: 120 }); }
     else if (type === 'goal') {
@@ -678,7 +681,7 @@
     });
     shooter.x = spotX - dir * 3.6; shooter.z = 1.8; shooter.face = dir === 1 ? 0 : Math.PI; shooter.kickSide = 1;
     keeper.x = dir * (HL - 0.8); keeper.z = 0; keeper.face = dir === 1 ? Math.PI : 0;
-    const B = game.ball; B.owner = null; B.x = spotX; B.y = 0.48; B.z = 0; B.vx = B.vy = B.vz = 0;
+    const B = game.ball; B.owner = null; B.x = spotX; B.y = game.BR; B.z = 0; B.vx = B.vy = B.vz = 0;
     shoot.k = { c, dir, shooter, keeper, spotX, R: null, kicked: false, dived: false, fin: false, bv: null, t1: 0 };
     shoot.in = [null, null]; shoot.st = 'aim'; shoot.t = 0;
     banner('#' + shooter.number + ' ' + shooter.name + '<small>' + CFG.teams[c.team].name + ' · ' + (S.n + 1) + '. atış</small>', 1800);
@@ -687,7 +690,7 @@
   function ballFree(dt) {
     const k = shoot.k, B = game.ball, v = k && k.bv; if (!v) return;
     B.x += v.x * dt; B.z += v.z * dt; B.y += v.y * dt; v.y -= 19 * dt;
-    if (B.y < 0.48) { B.y = 0.48; v.y = v.y < -1.5 ? -v.y * 0.3 : 0; }
+    if (B.y < game.BR) { B.y = game.BR; v.y = v.y < -1.5 ? -v.y * 0.3 : 0; }
     const f = Math.exp(-1.6 * dt); v.x *= f; v.z *= f;
     const lim = HL + (k.R.result === 'miss' ? 8 : 2.2); if (Math.abs(B.x) > lim) { B.x = Math.sign(B.x) * lim; v.x = 0; }
     B.vx = v.x; B.vz = v.z;
@@ -723,7 +726,7 @@
     if (k.t1 <= 0) return;
     const u = clamp(k.t1 / R.tb, 0, 1), ex = dir * HL, ey = 0.5 + R.ty * 1.4, ez = dir * R.tx * PGW;
     B.x = k.spotX + (ex - k.spotX) * u; B.z = ez * u;
-    B.y = 0.48 + (ey - 0.48) * u + 0.4 * Math.sin(Math.PI * u) * Math.min(1, R.ty * 2);
+    B.y = game.BR + (ey - game.BR) * u + 0.4 * Math.sin(Math.PI * u) * Math.min(1, R.ty * 2);
     B.vx = (ex - k.spotX) / R.tb; B.vz = ez / R.tb;
     if (u < 1) return;
     const r = R.result, vx = B.vx, vz = B.vz;

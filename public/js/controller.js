@@ -65,10 +65,13 @@
       if (phase === 'pick') { myTeam = m.taken[slot]; drawCards(m.taken); }
     } else if (m.t === 'pickFail') { $('pickMsg').textContent = 'Bu takım seçildi, diğerini seç'; }
     else if (m.t === 'restart') {
-      restartKind = m.team === myTeam ? m.kind : 'defend';
+      if (m.team === myTeam) restartKind = m.kind;
+      else if (m.live) return;                     // kaleci topu tuttu: rakip normal oynamaya devam eder
+      else restartKind = 'defend';
       $('hint').textContent = restartKind === 'defend' ? 'SAVUNMA' : 'HEDEFİ SEÇ';
+      if (AIM_KINDS[restartKind]) openAim(restartKind); else closeAim();
     } else if (m.t === 'restartEnd') {
-      restartKind = null; $('hint').textContent = 'HAREKET'; sx = sy = 0;
+      restartKind = null; $('hint').textContent = 'HAREKET'; sx = sy = 0; closeAim();
       socket.emit('c2h', { t: 'mv', x: 0, y: 0 });
     } else if (m.t === 'vib' && navigator.vibrate) navigator.vibrate(m.ms);
     else if (m.t === 'hostLeft') { phase = 'join'; wait('Bağlantı koptu', 'Tahtadaki oyun kapandı. QR kodu yeniden okut.'); }
@@ -78,7 +81,7 @@
   // ---------- gamepad ----------
   function openPad() {
     const t = CFG.teams[myTeam] || CFG.teams[0];
-    restartKind = null; $('hint').textContent = 'HAREKET';
+    restartKind = null; $('hint').textContent = 'HAREKET'; closeAim();
     document.documentElement.style.setProperty('--team', t.color);
     $('teamName').textContent = t.name;
     setSprintState(false, false);
@@ -125,6 +128,75 @@
       sx = vx; sy = vy; socket.emit('c2h', { t: 'mv', x: +vx.toFixed(2), y: +vy.toFixed(2) });
     }
   }, 33);
+
+  // ---------- aut / taç / korner modu ----------
+  // Gamepad yerine tam ekran nişan alanı: parmağı atılacak yöne düz çek, uzunluk = güç, bırak = at.
+  const AIM_KINDS = {
+    goalkick: { title: 'AUT', sub: 'Nereye atacaksan parmağını o yöne düz çek, bırakınca kaleci atar.' },
+    throwin: { title: 'TAÇ', sub: 'Atacağın yöne parmağını çek. Uzun çek = uzağa, kısa çek = yakına.' },
+    corner: { title: 'KORNER', sub: 'Ortalayacağın yöne parmağını çek. Uzun çek = sert orta.' }
+  };
+  const aimCv = $('aimCv'), ax2 = aimCv.getContext('2d');
+  const AIM_MIN = 28;                 // bundan kısa çekiş "iptal" sayılır
+  const A = { on: false, pid: null, x0: 0, y0: 0, x1: 0, y1: 0, sent: false, raf: 0 };
+  const aimMax = () => Math.min(innerWidth, innerHeight) * 0.62;
+  function aimSize() { const r = Math.min(devicePixelRatio || 1, 2); aimCv.width = innerWidth * r; aimCv.height = innerHeight * r; ax2.setTransform(r, 0, 0, r, 0, 0); }
+  addEventListener('resize', aimSize);
+  function openAim(kind) {
+    const k = AIM_KINDS[kind]; if (!k) return;
+    $('aimTitle').textContent = k.title; $('aimSub').textContent = k.sub;
+    A.on = true; A.pid = null; A.sent = false; $('aimPowerFill').style.width = '0';
+    stickId = null; vx = vy = 0; base.classList.remove('active');
+    $('pad').classList.add('restart'); aimSize();
+    if (navigator.vibrate) navigator.vibrate(40);
+    if (!A.raf) A.raf = requestAnimationFrame(aimDraw);
+  }
+  function closeAim() {
+    A.on = false; A.pid = null; $('pad').classList.remove('restart');
+    ax2.clearRect(0, 0, innerWidth, innerHeight);
+  }
+  const aimVec = () => {
+    const dx = A.x1 - A.x0, dy = A.y1 - A.y0, len = Math.hypot(dx, dy);
+    return { dx, dy, len, power: Math.min(1, len / aimMax()) };
+  };
+  $('aim').addEventListener('pointerdown', (e) => {
+    if (!A.on || A.sent || A.pid !== null) return;
+    A.pid = e.pointerId; $('aim').setPointerCapture(A.pid);
+    A.x0 = A.x1 = e.clientX; A.y0 = A.y1 = e.clientY;
+  });
+  $('aim').addEventListener('pointermove', (e) => {
+    if (e.pointerId !== A.pid) return;
+    A.x1 = e.clientX; A.y1 = e.clientY;
+    $('aimPowerFill').style.width = Math.round(aimVec().power * 100) + '%';
+  });
+  function aimRelease(e) {
+    if (e.pointerId !== A.pid) return;
+    A.pid = null;
+    const v = aimVec();
+    if (v.len < AIM_MIN) { $('aimPowerFill').style.width = '0'; return; }   // çok kısa: tekrar çek
+    A.sent = true;
+    socket.emit('c2h', { t: 'aim', x: +(v.dx / v.len).toFixed(3), y: +(v.dy / v.len).toFixed(3), p: +v.power.toFixed(3) });
+    if (navigator.vibrate) navigator.vibrate(30);
+  }
+  $('aim').addEventListener('pointerup', aimRelease);
+  $('aim').addEventListener('pointercancel', aimRelease);
+  function aimDraw() {
+    A.raf = requestAnimationFrame(aimDraw);
+    if (!A.on) return;
+    const c = ax2; c.clearRect(0, 0, innerWidth, innerHeight);
+    if (A.pid === null && !A.sent) return;
+    const v = aimVec(); if (v.len < 4) return;
+    const ux = v.dx / v.len, uy = v.dy / v.len, ok = v.len >= AIM_MIN;
+    const col = A.sent ? '#ece8dc' : ok ? '#f5d183' : 'rgba(236,232,220,.4)';
+    c.lineCap = 'round'; c.strokeStyle = col; c.fillStyle = col; c.lineWidth = 6;
+    c.beginPath(); c.arc(A.x0, A.y0, 14, 0, 7); c.globalAlpha = .35; c.fill(); c.globalAlpha = 1;
+    c.beginPath(); c.moveTo(A.x0, A.y0); c.lineTo(A.x1, A.y1); c.stroke();
+    const ah = 22; c.beginPath();
+    c.moveTo(A.x1, A.y1);
+    c.lineTo(A.x1 - ux * ah - uy * ah * 0.55, A.y1 - uy * ah + ux * ah * 0.55);
+    c.lineTo(A.x1 - ux * ah + uy * ah * 0.55, A.y1 - uy * ah - ux * ah * 0.55);
+    c.closePath(); c.fill();
+  }
 
   // tuşlar
   const activeButtonReleases = new Map();
