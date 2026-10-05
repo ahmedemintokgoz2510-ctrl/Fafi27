@@ -315,3 +315,16 @@ test('penalty shootout: early finish, tie goes to sudden death', () => {
   b.record('goal'); assert.equal(b.done, false);
   b.record('save'); assert.equal(b.done, true); assert.equal(b.winner, 0);
 });
+
+test('AI keeper dives sideways at a shot to the corner and the dive finishes after a goal', () => {
+  const game = createGame(cfg, () => {});
+  game.start(5, [false, false]);
+  game.state = 'play';
+  const B = game.ball, gk = game.teams[1][0];
+  B.owner = null; B.x = 32; B.y = 0.48; B.z = 0; B.vx = 30; B.vz = 3.5; B.vy = 0; B.last = 0;
+  let dove = false;
+  for (let i = 0; i < 90 && game.state === 'play'; i++) { game.update(1 / 60); if (gk.diveT > 0.5 && gk.diveTilt > 0.4) dove = true; }
+  assert.equal(dove, true);
+  for (let i = 0; i < 120; i++) game.update(1 / 60);
+  assert.equal(gk.diveT, 0);
+});
